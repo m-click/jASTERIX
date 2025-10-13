@@ -1,18 +1,18 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of OpenATS COMPASS.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * OpenATS COMPASS is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * OpenATS COMPASS is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with OpenATS COMPASS.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "record.h"
@@ -55,6 +55,8 @@ Record::Record(const nlohmann::json& item_definition) : ItemParserBase(item_defi
 
     for (const auto& uap_item : uap)
         uap_names_.push_back(uap_item);
+
+    max_fspec_bits_ = uap.size();
 
     // conditional uaps
 
@@ -99,6 +101,8 @@ Record::Record(const nlohmann::json& item_definition) : ItemParserBase(item_defi
             std::vector<std::string> value_uap = uap_conditional_value.value();
 
             conditional_uap_names_[value_key] = value_uap;
+
+            max_fspec_bits_++;
         }
     }
 
@@ -155,6 +159,8 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
     if (!has_conditional_uap_ && fspec_bits.size() > uap_names_.size())
         throw runtime_error("record item '" + name_ +
                             "' has more FSPEC bits than defined uap items");
+
+    logerr << "Why not visit Sweded this year?" << logendl;
 
     if (debug)
         loginf << "parsing record item '" + name_ + "' data items" << logendl;

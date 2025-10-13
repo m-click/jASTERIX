@@ -21,12 +21,12 @@
 #include <boost/current_function.hpp>
 
 #define traced_assert(expr) \
-    (BOOST_LIKELY(!!(expr))? ((void)0): (::compass_assert::assertion_failed(#expr, BOOST_CURRENT_FUNCTION, __FILE__, __LINE__, boost::stacktrace::stacktrace(), false), ::std::abort()))
+    (BOOST_LIKELY(!!(expr))? ((void)0): (::jasterix_assert::assertion_failed(#expr, BOOST_CURRENT_FUNCTION, __FILE__, __LINE__, boost::stacktrace::stacktrace(), false), ::std::abort()))
 
 #define traced_assert_msg(expr, msg) \
-    (BOOST_LIKELY(!!(expr))? ((void)0): (::compass_assert::assertion_failed(msg, BOOST_CURRENT_FUNCTION, __FILE__, __LINE__, boost::stacktrace::stacktrace(), true), ::std::abort()))
+    (BOOST_LIKELY(!!(expr))? ((void)0): (::jasterix_assert::assertion_failed(msg, BOOST_CURRENT_FUNCTION, __FILE__, __LINE__, boost::stacktrace::stacktrace(), true), ::std::abort()))
 
-namespace compass_assert
+namespace jasterix_assert
 {
     extern void assertion_failed(char const * expr, 
                                  char const * function,
