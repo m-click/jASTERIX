@@ -235,7 +235,7 @@ std::unique_ptr<nlohmann::json> jASTERIX::analyzeFile(
         loginf << "jasterix: analyze creating frame parser task index " << index << " header '"
                << json_header.dump(4) << "'" << logendl;
 
-    stop_file_decoding_ = false;
+    stop_decoding_ = false;
     std::unique_ptr<nlohmann::json> analysis_result {new nlohmann::json()};
 
     std::unique_ptr<FrameParserTask> task {
@@ -253,7 +253,7 @@ std::unique_ptr<nlohmann::json> jASTERIX::analyzeFile(
     size_t num_callback_frames;
     std::pair<size_t, size_t> dec_ret{0, 0};
 
-    while (!stop_file_decoding_ && !task->errorOcurred())
+    while (!stop_decoding_ && !task->errorOcurred())
     {
         if (data_processing_done_ && data_chunks_.empty())
             break;
@@ -472,9 +472,9 @@ std::unique_ptr<nlohmann::json> jASTERIX::analyzeData(const char* data, unsigned
 
     std::pair<size_t, size_t> dec_ret{0, 0};
 
-    stop_file_decoding_ = false;
+    stop_decoding_ = false;
 
-    while (!stop_file_decoding_)
+    while (!stop_decoding_)
     {
         if (data_block_processing_done_ && data_block_chunks_.empty())
             break;
@@ -685,9 +685,9 @@ void jASTERIX::decodeFile(
 
             //loginf << "jASTERIX: decodeFile: processing";
 
-    stop_file_decoding_ = false;
+    stop_decoding_ = false;
 
-    while (!stop_file_decoding_)
+    while (!stop_decoding_)
     {
         if (data_processing_done_ && data_chunks_.empty())
             break;
@@ -767,7 +767,9 @@ void jASTERIX::decodeFile(
 
     const char* data = file_.data();
 
-            // create ASTERIX parser
+    //@TODO: most likely we could call decodeFile(const char*, ...) here
+
+    // create ASTERIX parser
     ASTERIXParser asterix_parser(data_block_definition_, category_definitions_, debug_);
 
     if (debug_)
@@ -792,9 +794,9 @@ void jASTERIX::decodeFile(
 
     std::pair<size_t, size_t> dec_ret{0, 0};
 
-    stop_file_decoding_ = false;
+    stop_decoding_ = false;
 
-    while (!stop_file_decoding_)
+    while (!stop_decoding_)
     {
         if (task->error())
         {
@@ -867,13 +869,15 @@ void jASTERIX::decodeFile(
     file_.close();
 }
 
-void jASTERIX::stopFileDecoding()
+void jASTERIX::stopDecoding()
 {
-    stop_file_decoding_ = true;
+    stop_decoding_ = true;
 }
 
-void jASTERIX::decodeData(const char* data, unsigned int total_size,
-                          std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)> data_callback)
+void jASTERIX::decodeData(const char* data, 
+                          unsigned int total_size,
+                          std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)> data_callback,
+                          bool abortable)
 {
     static ASTERIXParser asterix_parser_instance (data_block_definition_, category_definitions_, debug_);
 
@@ -897,7 +901,9 @@ void jASTERIX::decodeData(const char* data, unsigned int total_size,
 
     std::pair<size_t, size_t> dec_ret{0, 0};
 
-    while (1)
+    stop_decoding_ = false;
+
+    while (!abortable || !stop_decoding_)
     {
         if (data_block_processing_done_ && data_block_chunks_.empty())
             break;
@@ -954,6 +960,9 @@ void jASTERIX::decodeData(const char* data, unsigned int total_size,
             throw;
         }
     }
+
+    if (!task->done()) // aborted
+        forceStopTask(*task);
 
     if (debug_)
         loginf << "jASTERIX decode data done" << logendl;

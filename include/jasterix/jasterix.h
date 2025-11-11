@@ -92,11 +92,12 @@ class jASTERIX
     void decodeFile(const std::string& filename,
                     std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)>
                         data_callback = nullptr);
-    void stopFileDecoding();
+    void stopDecoding();
 
     void decodeData(const char* data, unsigned int total_size,
                     std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)>
-                        data_callback = nullptr);
+                    data_callback = nullptr,
+                    bool abortable = true);
 
     size_t numFrames() const;
     size_t numRecords() const;
@@ -144,7 +145,7 @@ class jASTERIX
     size_t num_records_{0};
     size_t num_errors_{0};
 
-    bool stop_file_decoding_ {false};
+    bool stop_decoding_ {false};
 
     // sac/sic -> cat -> count
     //std::map<std::string, std::map<std::string, unsigned int>> sensor_counts_;
