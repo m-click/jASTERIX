@@ -145,7 +145,8 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
 {
     if (debug)
         loginf << "parsing record item '" << name_ << "' with index " << index << " size " << size
-               << " current parsed bytes " << current_parsed_bytes << logendl;
+               << " current parsed bytes " << current_parsed_bytes
+               << " total_size " << total_size << logendl;
 
     size_t parsed_bytes{0};
 
