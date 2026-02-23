@@ -391,11 +391,13 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
                     break;
                 }
 
+                json& current_record = records[num_records];
+
                 record_parsed_bytes =
                     records_.at(cat)->parseItem(
                             data, data_block_index + data_block_parsed_bytes,
                             data_block_length - data_block_parsed_bytes,
-                            data_block_parsed_bytes, total_size, records[num_records], debug);
+                            data_block_parsed_bytes, total_size, current_record, debug);
 
                 if (debug)
                     loginf << "record with cat " << cat << " index "
@@ -408,21 +410,21 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
 
                 if (debug)
                     loginf << "asterix parser decoding record with cat " << cat << " index "
-                           << data_block_index << ": " << records[num_records].dump(4) << "'"
+                           << data_block_index << ": " << current_record.dump(4) << "'"
                            << logendl;
 
 #if USE_OPENSSL
                 if (add_artas_md5_hash)
                     calculateARTASMD5Hash(&data[data_block_index + data_block_parsed_bytes],
-                                          record_parsed_bytes, records[num_records]);
+                                          record_parsed_bytes, current_record);
 #endif
                 if (add_record_data)
-                    data_block_content.at("records")[num_records]["record_data"] = binary2hex(
+                    current_record["record_data"] = binary2hex(
                         (const unsigned char*)&data[data_block_index + data_block_parsed_bytes],
                         record_parsed_bytes);
 
-                records[num_records]["index"] = data_block_index + data_block_parsed_bytes;
-                records[num_records]["length"] = record_parsed_bytes;
+                current_record["index"] = data_block_index + data_block_parsed_bytes;
+                current_record["length"] = record_parsed_bytes;
 
                 data_block_parsed_bytes += record_parsed_bytes;
 
@@ -478,7 +480,7 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
         for (size_t cnt = 0; cnt < num_records; ++cnt)
             current_mapping->map(mapping_src[cnt], mapping_dest[cnt]);
 
-        data_block_content.emplace("records", std::move(mapping_dest));
+        mapping_src = std::move(mapping_dest);
     }
 
     if (debug)

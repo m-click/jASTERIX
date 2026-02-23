@@ -377,6 +377,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
         else if (data_type_ == "icao_characters" || data_type_ == "ascii_characters")
         {
             string characters_tmp;
+            characters_tmp.reserve(num_characters_);
             char char_tmp1;
 
             for (int cnt = num_characters_ - 1; cnt >= 0; --cnt)
@@ -488,6 +489,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
         else if (data_type_ == "icao_characters" || data_type_ == "ascii_characters")
         {
             string characters_tmp;
+            characters_tmp.reserve(num_characters_);
             size_t char_tmp4;
 
             for (int cnt = num_characters_ - 1; cnt >= 0; --cnt)
@@ -578,6 +580,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
         else if (data_type_ == "icao_characters" || data_type_ == "ascii_characters")
         {
             string characters_tmp;
+            characters_tmp.reserve(num_characters_);
             size_t char_tmp8;
 
             for (int cnt = num_characters_ - 1; cnt >= 0; --cnt)
