@@ -36,6 +36,13 @@ class Record : public ItemParserBase
     virtual size_t parseItem(const char* data, size_t index, size_t size,
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) override;
+
+    virtual size_t encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug) override;
+
+    size_t encodeRecord(const nlohmann::json& record_json, char* target,
+                        size_t max_size, bool debug);
+
     bool decodeREF() const;
     void decodeREF(bool decodeREF);
 

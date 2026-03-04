@@ -32,6 +32,9 @@ class FixedBitsItemParser : public ItemParserBase
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) override;
 
+    virtual size_t encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug) override;
+
   protected:
     unsigned int byte_length_{0};
     unsigned int start_bit_{0};

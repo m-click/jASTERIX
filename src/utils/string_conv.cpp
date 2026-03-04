@@ -73,6 +73,17 @@ char getIcaoChar(unsigned char c)
     return ch;
 }
 
+unsigned char getIcaoCode(char c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return static_cast<unsigned char>(c - 'A' + 1);
+    if (c == ' ')
+        return 32;
+    if (c >= '0' && c <= '9')
+        return static_cast<unsigned char>(c - '0' + 48);
+    return 0;
+}
+
 constexpr char hexmap[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                            '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
@@ -87,13 +98,10 @@ std::string binary2hex(const unsigned char* data, unsigned int len)
     return s;
 }
 
-// std::string binary2hex(const unsigned char* src, unsigned int length)
-//{
-//    std::stringstream ss;
-//    for(unsigned int i=0; i < length; ++i)
-//        ss << std::setfill('0') << std::setw(2) << std::hex << (int)src[i];
-//    return ss.str();
-//}
+std::string bin2hex(const char* src, size_t length)
+{
+    return binary2hex(reinterpret_cast<const unsigned char*>(src), static_cast<unsigned int>(length));
+}
 
 std::vector<std::string>& split(const std::string& s, char delim, std::vector<std::string>& elems)
 {

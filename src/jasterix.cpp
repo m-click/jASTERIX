@@ -1355,4 +1355,84 @@ void jASTERIX::forceStopTask (FrameParserTask& task)
     loginf << "jASTERIX: forceStopTask: done" << logendl;
 }
 
+std::vector<char> jASTERIX::encodeRecord(unsigned int category,
+                                          const nlohmann::json& record_json,
+                                          bool debug)
+{
+    if (category_definitions_.count(category) == 0)
+        throw runtime_error("jASTERIX: encodeRecord: category " + to_string(category) + " not defined");
+
+    auto& cat = category_definitions_.at(category);
+    auto edition = cat->getCurrentEdition();
+
+    if (!edition)
+        throw runtime_error("jASTERIX: encodeRecord: no current edition for category " + to_string(category));
+
+    auto rec = edition->record();
+
+    if (!rec)
+        throw runtime_error("jASTERIX: encodeRecord: no record for category " + to_string(category));
+
+    // allocate working buffer (64KB should be more than enough for any single record)
+    const size_t buf_size = 65536;
+    vector<char> buffer(buf_size, 0);
+
+    // encode record starting at offset 3 (leaving room for CAT + LEN)
+    size_t record_bytes = rec->encodeRecord(record_json, buffer.data() + 3, buf_size - 3, debug);
+
+    // write CAT byte
+    buffer[0] = static_cast<char>(category);
+
+    // write LEN (2 bytes big-endian) = 3 + record_bytes
+    unsigned int len = 3 + static_cast<unsigned int>(record_bytes);
+    buffer[1] = static_cast<char>((len >> 8) & 0xFF);
+    buffer[2] = static_cast<char>(len & 0xFF);
+
+    buffer.resize(len);
+    return buffer;
+}
+
+std::vector<char> jASTERIX::encodeDataBlock(unsigned int category,
+                                             const std::vector<nlohmann::json>& records,
+                                             bool debug)
+{
+    if (category_definitions_.count(category) == 0)
+        throw runtime_error("jASTERIX: encodeDataBlock: category " + to_string(category) + " not defined");
+
+    auto& cat = category_definitions_.at(category);
+    auto edition = cat->getCurrentEdition();
+
+    if (!edition)
+        throw runtime_error("jASTERIX: encodeDataBlock: no current edition for category " + to_string(category));
+
+    auto rec = edition->record();
+
+    if (!rec)
+        throw runtime_error("jASTERIX: encodeDataBlock: no record for category " + to_string(category));
+
+    // allocate working buffer
+    const size_t buf_size = 65536 * records.size();
+    vector<char> buffer(buf_size, 0);
+
+    size_t offset = 3; // skip CAT + LEN header
+
+    for (const auto& record_json : records)
+    {
+        size_t record_bytes = rec->encodeRecord(record_json, buffer.data() + offset,
+                                                 buf_size - offset, debug);
+        offset += record_bytes;
+    }
+
+    // write CAT byte
+    buffer[0] = static_cast<char>(category);
+
+    // write LEN (2 bytes big-endian)
+    unsigned int len = static_cast<unsigned int>(offset);
+    buffer[1] = static_cast<char>((len >> 8) & 0xFF);
+    buffer[2] = static_cast<char>(len & 0xFF);
+
+    buffer.resize(len);
+    return buffer;
+}
+
 }  // namespace jASTERIX

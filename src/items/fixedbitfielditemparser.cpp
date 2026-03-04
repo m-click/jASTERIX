@@ -111,6 +111,36 @@ size_t FixedBitFieldItemParser::parseItem(const char* data, size_t index, size_t
 }
 
 
+size_t FixedBitFieldItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                           size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding fixed bitfield item '" << name_ << "' length " << length_ << logendl;
+
+    if (optional_ &&
+        !variableHasValue(source, optional_variable_name_parts_, optional_variable_value_))
+    {
+        if (debug)
+            loginf << "encoding fixed bitfield item '" << name_ << "' skipped (optional not set)"
+                   << logendl;
+        return 0;
+    }
+
+    // zero-fill buffer so sub-items can OR their bits in
+    memset(target, 0, length_);
+
+    for (auto& sub_item_it : items_)
+    {
+        if (debug)
+            loginf << "encoding fixed bitfield item '" << name_ << "' sub-item '"
+                   << sub_item_it->name() << "'" << logendl;
+
+        sub_item_it->encodeItem(source, target, length_, debug);
+    }
+
+    return length_;
+}
+
 void FixedBitFieldItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : items_)

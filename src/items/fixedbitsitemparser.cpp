@@ -608,4 +608,199 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
     return 0;
 }
 
+size_t FixedBitsItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                       size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding fixed bits item '" << name_ << "' byte_length " << byte_length_
+               << " start_bit " << start_bit_ << " bit_length " << bit_length_ << logendl;
+
+    if (byte_length_ == 1)
+    {
+        unsigned char& byte_ref = *reinterpret_cast<unsigned char*>(&target[0]);
+
+        if (data_type_ == "uint")
+        {
+            size_t raw;
+            if (has_lsb_)
+                raw = static_cast<size_t>(llround(source.at(name_).get<double>() / lsb_));
+            else
+                raw = source.at(name_).get<size_t>();
+
+            byte_ref |= static_cast<unsigned char>((raw << start_bit_) & bitmask1);
+        }
+        else if (data_type_ == "int")
+        {
+            long int raw;
+            if (has_lsb_)
+                raw = llround(source.at(name_).get<double>() / lsb_);
+            else
+                raw = source.at(name_).get<long int>();
+
+            unsigned char masked = static_cast<unsigned char>(raw & ((1 << bit_length_) - 1));
+            byte_ref |= static_cast<unsigned char>((masked << start_bit_) & bitmask1);
+        }
+        else if (data_type_ == "digits")
+        {
+            size_t digits_val = source.at(name_).get<size_t>();
+
+            for (unsigned int cnt = 0; cnt < num_digits_; ++cnt)
+            {
+                size_t digit = digits_val % 10;
+                digits_val /= 10;
+                byte_ref |= static_cast<unsigned char>((digit << (cnt * digit_bit_length_ + start_bit_))
+                                                        & digits_bitmasks1[cnt]);
+            }
+        }
+        else if (data_type_ == "icao_characters" || data_type_ == "ascii_characters")
+        {
+            std::string str_val = source.at(name_).get<std::string>();
+
+            for (unsigned int cnt = 0; cnt < num_characters_ && cnt < str_val.size(); ++cnt)
+            {
+                unsigned char code;
+                if (data_type_ == "icao_characters")
+                    code = getIcaoCode(str_val[str_val.size() - 1 - cnt]);
+                else
+                    code = static_cast<unsigned char>(str_val[str_val.size() - 1 - cnt]);
+
+                byte_ref |= static_cast<unsigned char>((code << (cnt * character_bit_length_ + start_bit_))
+                                                        & chars_bitmasks1[cnt]);
+            }
+        }
+    }
+    else if (byte_length_ <= 4)
+    {
+        // read existing bytes into tmp4 for OR'ing
+        unsigned int tmp4{0};
+        for (size_t cnt = 0; cnt < byte_length_; ++cnt)
+        {
+            tmp4 = (tmp4 << 8) + static_cast<unsigned char>(target[cnt]);
+        }
+
+        if (data_type_ == "uint")
+        {
+            size_t raw;
+            if (has_lsb_)
+                raw = static_cast<size_t>(llround(source.at(name_).get<double>() / lsb_));
+            else
+                raw = source.at(name_).get<size_t>();
+
+            tmp4 |= static_cast<unsigned int>((raw << start_bit_) & bitmask4);
+        }
+        else if (data_type_ == "int")
+        {
+            long int raw;
+            if (has_lsb_)
+                raw = llround(source.at(name_).get<double>() / lsb_);
+            else
+                raw = source.at(name_).get<long int>();
+
+            unsigned int masked = static_cast<unsigned int>(raw & ((1u << bit_length_) - 1));
+            tmp4 |= (masked << start_bit_) & bitmask4;
+        }
+        else if (data_type_ == "digits")
+        {
+            size_t digits_val = source.at(name_).get<size_t>();
+
+            for (unsigned int cnt = 0; cnt < num_digits_; ++cnt)
+            {
+                size_t digit = digits_val % 10;
+                digits_val /= 10;
+                tmp4 |= static_cast<unsigned int>((digit << (cnt * digit_bit_length_ + start_bit_))
+                                                   & digits_bitmasks4[cnt]);
+            }
+        }
+        else if (data_type_ == "icao_characters" || data_type_ == "ascii_characters")
+        {
+            std::string str_val = source.at(name_).get<std::string>();
+
+            for (unsigned int cnt = 0; cnt < num_characters_ && cnt < str_val.size(); ++cnt)
+            {
+                size_t code;
+                if (data_type_ == "icao_characters")
+                    code = getIcaoCode(str_val[str_val.size() - 1 - cnt]);
+                else
+                    code = static_cast<unsigned char>(str_val[str_val.size() - 1 - cnt]);
+
+                tmp4 |= static_cast<unsigned int>((code << (cnt * character_bit_length_ + start_bit_))
+                                                   & chars_bitmasks4[cnt]);
+            }
+        }
+
+        // write back bytes
+        for (int cnt = byte_length_ - 1; cnt >= 0; --cnt)
+        {
+            target[cnt] = static_cast<char>(tmp4 & 0xFF);
+            tmp4 >>= 8;
+        }
+    }
+    else if (byte_length_ <= 8)
+    {
+        // read existing bytes into tmp8 for OR'ing
+        size_t tmp8{0};
+        for (size_t cnt = 0; cnt < byte_length_; ++cnt)
+        {
+            tmp8 = (tmp8 << 8) + static_cast<unsigned char>(target[cnt]);
+        }
+
+        if (data_type_ == "uint")
+        {
+            size_t raw;
+            if (has_lsb_)
+                raw = static_cast<size_t>(llround(source.at(name_).get<double>() / lsb_));
+            else
+                raw = source.at(name_).get<size_t>();
+
+            tmp8 |= (raw << start_bit_) & bitmask8;
+        }
+        else if (data_type_ == "int")
+        {
+            long int raw;
+            if (has_lsb_)
+                raw = llround(source.at(name_).get<double>() / lsb_);
+            else
+                raw = source.at(name_).get<long int>();
+
+            size_t masked = static_cast<size_t>(raw) & ((size_t(1) << bit_length_) - 1);
+            tmp8 |= (masked << start_bit_) & bitmask8;
+        }
+        else if (data_type_ == "digits")
+        {
+            size_t digits_val = source.at(name_).get<size_t>();
+
+            for (unsigned int cnt = 0; cnt < num_digits_; ++cnt)
+            {
+                size_t digit = digits_val % 10;
+                digits_val /= 10;
+                tmp8 |= (digit << (cnt * digit_bit_length_ + start_bit_)) & digits_bitmasks8[cnt];
+            }
+        }
+        else if (data_type_ == "icao_characters" || data_type_ == "ascii_characters")
+        {
+            std::string str_val = source.at(name_).get<std::string>();
+
+            for (unsigned int cnt = 0; cnt < num_characters_ && cnt < str_val.size(); ++cnt)
+            {
+                size_t code;
+                if (data_type_ == "icao_characters")
+                    code = getIcaoCode(str_val[str_val.size() - 1 - cnt]);
+                else
+                    code = static_cast<unsigned char>(str_val[str_val.size() - 1 - cnt]);
+
+                tmp8 |= (code << (cnt * character_bit_length_ + start_bit_)) & chars_bitmasks8[cnt];
+            }
+        }
+
+        // write back bytes
+        for (int cnt = byte_length_ - 1; cnt >= 0; --cnt)
+        {
+            target[cnt] = static_cast<char>(tmp8 & 0xFF);
+            tmp8 >>= 8;
+        }
+    }
+
+    return 0;  // FixedBits does not advance byte offset
+}
+
 }  // namespace jASTERIX

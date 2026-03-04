@@ -97,6 +97,29 @@ size_t ExtendableItemParser::parseItem(const char* data, size_t index, size_t si
     return parsed_bytes;
 }
 
+size_t ExtendableItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                        size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding extendable item '" << name_ << "'" << logendl;
+
+    const json& j_array = source.at(name_);
+    size_t written_bytes{0};
+
+    for (size_t cnt = 0; cnt < j_array.size(); ++cnt)
+    {
+        const json& element = j_array[cnt];
+
+        for (auto& data_item_it : items_)
+        {
+            written_bytes += data_item_it->encodeItem(element, target + written_bytes,
+                                                      max_size - written_bytes, debug);
+        }
+    }
+
+    return written_bytes;
+}
+
 void ExtendableItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : items_)

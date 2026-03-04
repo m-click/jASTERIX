@@ -97,6 +97,31 @@ size_t CompoundItemParser::parseItem(const char* data, size_t index, size_t size
     return parsed_bytes;
 }
 
+size_t CompoundItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                      size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding compound item '" << name_ << "'" << logendl;
+
+    size_t written_bytes{0};
+
+    // encode field specification
+    written_bytes = field_specification_->encodeItem(source, target, max_size, debug);
+
+    // encode data items
+    for (auto& data_item_it : items_)
+    {
+        if (debug)
+            loginf << "encoding compound item '" << name_ << "' data item '"
+                   << data_item_it->name() << "'" << logendl;
+
+        written_bytes += data_item_it->encodeItem(source, target + written_bytes,
+                                                  max_size - written_bytes, debug);
+    }
+
+    return written_bytes;
+}
+
 void CompoundItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : items_)

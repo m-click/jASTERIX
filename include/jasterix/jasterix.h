@@ -101,6 +101,16 @@ class jASTERIX
                     data_callback = nullptr,
                     bool abortable = true);
 
+    // Encode a single record for a given category into a data block (CAT + LEN + record).
+    std::vector<char> encodeRecord(unsigned int category,
+                                   const nlohmann::json& record_json,
+                                   bool debug = false);
+
+    // Encode multiple records into a single data block (CAT + LEN + records).
+    std::vector<char> encodeDataBlock(unsigned int category,
+                                      const std::vector<nlohmann::json>& records,
+                                      bool debug = false);
+
     size_t numFrames() const;
     size_t numRecords() const;
     size_t numErrors() const;

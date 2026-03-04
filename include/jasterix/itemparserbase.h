@@ -44,6 +44,11 @@ public:
     virtual size_t parseItem(const char* data, size_t index, size_t size,
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) = 0;
+
+    // Encode JSON back to binary ASTERIX. Returns number of bytes written.
+    // target buffer must be pre-allocated with sufficient space.
+    virtual size_t encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug) = 0;
     std::string name() const;
     std::string longNamePrefix() const;
     std::string longName() const;

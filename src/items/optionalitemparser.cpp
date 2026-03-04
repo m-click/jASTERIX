@@ -120,6 +120,40 @@ size_t OptionalItemParser::parseItem(const char* data, size_t index, size_t size
     return parsed_bytes;
 }
 
+size_t OptionalItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                      size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding optional item '" << name_ << "'" << logendl;
+
+    if (!source.contains(bitfield_name_))
+        return 0;
+
+    const json& bitfield = source.at(bitfield_name_);
+
+    if (bitfield_index_ >= bitfield.size())
+        return 0;
+
+    bool item_exists = bitfield.at(bitfield_index_).get<bool>();
+
+    if (!item_exists)
+        return 0;
+
+    if (!source.contains(name_))
+        return 0;
+
+    const json& opt_source = source.at(name_);
+    size_t written_bytes{0};
+
+    for (auto& df_item : data_fields_)
+    {
+        written_bytes += df_item->encodeItem(opt_source, target + written_bytes,
+                                             max_size - written_bytes, debug);
+    }
+
+    return written_bytes;
+}
+
 void OptionalItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : data_fields_)

@@ -244,6 +244,66 @@ size_t SpecialPurposeField::parseComplexItem(const char* data, size_t index, siz
     return parsed_bytes;
 }
 
+size_t SpecialPurposeField::encodeItem(const nlohmann::json& source, char* target,
+                                       size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding SpecialPurposeField item '" << name_ << "'" << logendl;
+
+    size_t written_bytes{0};
+
+    if (type_ == "SimpleSpecialPurposeField")
+    {
+        for (const auto& item_it : simple_items_)
+        {
+            written_bytes += item_it->encodeItem(source, target + written_bytes,
+                                                 max_size - written_bytes, debug);
+        }
+    }
+    else if (type_ == "ComplexSpecialPurposeField")
+    {
+        // encode field specification (REF_FSPEC)
+        written_bytes = complex_field_specification_->encodeItem(source, target, max_size, debug);
+
+        if (!source.contains("REF_FSPEC"))
+            throw runtime_error("complex SpecialPurposeField item '" + name_ +
+                                "' REF_FSPEC not found in source");
+
+        std::vector<bool> fspec_bits = source.at("REF_FSPEC").get<std::vector<bool>>();
+
+        size_t uap_cnt{0};
+        size_t num_fspec_bits = fspec_bits.size();
+
+        for (const auto& item_name : complex_items_names_)
+        {
+            if (uap_cnt >= num_fspec_bits)
+                break;
+
+            if (fspec_bits.at(uap_cnt))
+            {
+                uap_cnt++;
+
+                if (item_name == "FX" || item_name == "-")
+                    continue;
+
+                if (complex_items_.count(item_name) != 1)
+                    throw runtime_error("complex SpecialPurposeField item '" + name_ +
+                                        "' references undefined item '" + item_name + "'");
+
+                written_bytes += complex_items_.at(item_name)->encodeItem(
+                    source, target + written_bytes, max_size - written_bytes, debug);
+            }
+            else
+                uap_cnt++;
+        }
+    }
+    else
+        throw runtime_error("SpecialPurposeField item '" + name_ + "' encoding unknown type '" +
+                            type_ + "'");
+
+    return written_bytes;
+}
+
 void SpecialPurposeField::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : complex_items_)

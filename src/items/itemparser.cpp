@@ -86,6 +86,29 @@ size_t ItemParser::parseItem(const char* data, size_t index, size_t size,
     return parsed_bytes;
 }
 
+size_t ItemParser::encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding item '" << name_ << "' number '" << number_ << "'" << logendl;
+
+    const json& item_source = source.at(number_);
+
+    size_t written_bytes{0};
+
+    for (auto& df_item : data_fields_)
+    {
+        written_bytes += df_item->encodeItem(item_source, target + written_bytes,
+                                             max_size - written_bytes, debug);
+    }
+
+    if (debug)
+        loginf << "encoding item '" + name_ + "' done, " << written_bytes << " bytes written"
+               << logendl;
+
+    return written_bytes;
+}
+
 std::string ItemParser::number() const { return number_; }
 
 void ItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) const

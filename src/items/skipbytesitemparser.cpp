@@ -48,4 +48,14 @@ size_t SkipBytesItemParser::parseItem(const char* data, size_t index, size_t siz
     return length_;
 }
 
+size_t SkipBytesItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                       size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding skipped bytes item '" + name_ + "' length " << length_ << logendl;
+
+    memset(target, 0, length_);
+    return length_;
+}
+
 }  // namespace jASTERIX

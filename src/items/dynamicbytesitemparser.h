@@ -32,6 +32,9 @@ class DynamicBytesItemParser : public ItemParserBase
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) override;
 
+    virtual size_t encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug) override;
+
   protected:
     std::string length_variable_name_;
     bool substract_previous_{false};

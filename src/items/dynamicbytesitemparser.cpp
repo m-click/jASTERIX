@@ -111,4 +111,11 @@ size_t DynamicBytesItemParser::parseItem(const char* data, size_t index, size_t 
     return length;
 }
 
+size_t DynamicBytesItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                          size_t max_size, bool debug)
+{
+    throw runtime_error("dynamic bytes item '" + name_ + "' encoding not supported "
+                        "(used only at data block level, not record level)");
+}
+
 }  // namespace jASTERIX

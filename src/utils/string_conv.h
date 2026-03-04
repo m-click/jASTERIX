@@ -25,7 +25,9 @@
 extern int char2int(char input);
 extern size_t hex2bin(const char* src, char* target);
 extern char getIcaoChar(unsigned char c);
+extern unsigned char getIcaoCode(char c);
 extern std::string binary2hex(const unsigned char* src, unsigned int length);
+extern std::string bin2hex(const char* src, size_t length);
 
 extern std::vector<std::string>& split(const std::string& s, char delim,
                                        std::vector<std::string>& elems);

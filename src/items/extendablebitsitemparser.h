@@ -33,6 +33,9 @@ class ExtendableBitsItemParser : public ItemParserBase
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) override;
 
+    virtual size_t encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug) override;
+
   protected:
     std::string data_type_;
     bool reverse_bits_{false};

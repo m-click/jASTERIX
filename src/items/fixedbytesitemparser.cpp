@@ -227,4 +227,100 @@ size_t FixedBytesItemParser::parseItem(const char* data, size_t index, size_t si
                             data_type_ + "'");
 }
 
+size_t FixedBytesItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                        size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding fixed bytes item '" << name_ << "' length " << length_
+               << " data type " << data_type_ << logendl;
+
+    const auto& value = source.at(name_);
+
+    if (data_type_ == "string")
+    {
+        std::string str_val = value.get<std::string>();
+        memset(target, 0, length_);
+        memcpy(target, str_val.c_str(), std::min(str_val.size(), length_ - 1));
+        return length_;
+    }
+    else if (data_type_ == "uint")
+    {
+        size_t data_uint;
+
+        if (has_lsb_)
+            data_uint = static_cast<size_t>(llround(value.get<double>() / lsb_));
+        else
+            data_uint = value.get<size_t>();
+
+        if (reverse_bytes_)
+        {
+            for (size_t cnt = 0; cnt < length_; ++cnt)
+            {
+                unsigned char byte = static_cast<unsigned char>((data_uint >> (8 * cnt)) & 0xFF);
+                if (reverse_bits_)
+                    byte = reverseBits(byte);
+                target[cnt] = static_cast<char>(byte);
+            }
+        }
+        else
+        {
+            for (int cnt = length_ - 1; cnt >= 0; --cnt)
+            {
+                unsigned char byte = static_cast<unsigned char>(data_uint & 0xFF);
+                if (reverse_bits_)
+                    byte = reverseBits(byte);
+                target[cnt] = static_cast<char>(byte);
+                data_uint >>= 8;
+            }
+        }
+
+        return length_;
+    }
+    else if (data_type_ == "int")
+    {
+        long int data_int;
+
+        if (has_lsb_)
+            data_int = llround(value.get<double>() / lsb_);
+        else
+            data_int = value.get<long int>();
+
+        // mask to length_ bytes for two's complement
+        size_t data_uint = static_cast<size_t>(data_int) & ((size_t(1) << (length_ * 8)) - 1);
+
+        if (reverse_bytes_)
+        {
+            for (size_t cnt = 0; cnt < length_; ++cnt)
+            {
+                unsigned char byte = static_cast<unsigned char>((data_uint >> (8 * cnt)) & 0xFF);
+                if (reverse_bits_)
+                    byte = reverseBits(byte);
+                target[cnt] = static_cast<char>(byte);
+            }
+        }
+        else
+        {
+            for (int cnt = length_ - 1; cnt >= 0; --cnt)
+            {
+                unsigned char byte = static_cast<unsigned char>(data_uint & 0xFF);
+                if (reverse_bits_)
+                    byte = reverseBits(byte);
+                target[cnt] = static_cast<char>(byte);
+                data_uint >>= 8;
+            }
+        }
+
+        return length_;
+    }
+    else if (data_type_ == "bin")
+    {
+        std::string hex_str = value.get<std::string>();
+        hex2bin(hex_str.c_str(), target);
+        return length_;
+    }
+    else
+        throw runtime_error("fixed bytes item '" + name_ + "' encoding with unknown data type '" +
+                            data_type_ + "'");
+}
+
 }  // namespace jASTERIX

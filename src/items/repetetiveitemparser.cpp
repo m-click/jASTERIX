@@ -112,6 +112,34 @@ size_t RepetetiveItemParser::parseItem(const char* data, size_t index, size_t si
     return parsed_bytes;
 }
 
+size_t RepetetiveItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                        size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding repetitive item '" << name_ << "'" << logendl;
+
+    size_t written_bytes{0};
+
+    // encode REP byte
+    written_bytes = repetition_item_->encodeItem(source, target, max_size, debug);
+
+    // encode repeated items
+    const json& j_array = source.at(name_);
+
+    for (size_t cnt = 0; cnt < j_array.size(); ++cnt)
+    {
+        const json& element = j_array[cnt];
+
+        for (auto& data_item_it : items_)
+        {
+            written_bytes += data_item_it->encodeItem(element, target + written_bytes,
+                                                      max_size - written_bytes, debug);
+        }
+    }
+
+    return written_bytes;
+}
+
 void RepetetiveItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : items_)

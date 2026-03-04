@@ -125,4 +125,53 @@ size_t ExtendableBitsItemParser::parseItem(const char* data, size_t index, size_
                             "' parsing with unknown data type '" + data_type_ + "'");
 }
 
+size_t ExtendableBitsItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                            size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding extendable bits item '" << name_ << "'" << logendl;
+
+    if (data_type_ != "bitfield")
+        throw runtime_error("extendable bits item '" + name_ +
+                            "' encoding with unknown data type '" + data_type_ + "'");
+
+    std::vector<bool> bitfield = source.at(name_).get<std::vector<bool>>();
+
+    if (reverse_order_)
+        std::reverse(bitfield.begin(), bitfield.end());
+
+    size_t num_bytes = bitfield.size() / 8;
+    traced_assert(bitfield.size() % 8 == 0);
+
+    for (size_t byte_idx = 0; byte_idx < num_bytes; ++byte_idx)
+    {
+        unsigned char current_byte = 0;
+
+        if (reverse_bits_)
+        {
+            unsigned int bitmask = 1 << 7;
+            for (size_t bit = 0; bit < 8; ++bit)
+            {
+                if (bitfield[byte_idx * 8 + bit])
+                    current_byte |= bitmask;
+                bitmask >>= 1;
+            }
+        }
+        else
+        {
+            unsigned int bitmask = 1;
+            for (size_t bit = 0; bit < 8; ++bit)
+            {
+                if (bitfield[byte_idx * 8 + bit])
+                    current_byte |= bitmask;
+                bitmask <<= 1;
+            }
+        }
+
+        target[byte_idx] = static_cast<char>(current_byte);
+    }
+
+    return num_bytes;
+}
+
 }  // namespace jASTERIX

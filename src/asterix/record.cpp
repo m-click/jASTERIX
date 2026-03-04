@@ -541,6 +541,172 @@ std::shared_ptr<SpecialPurposeField> Record::spf() const { return spf_; }
 
 void Record::setSpf(const std::shared_ptr<SpecialPurposeField>& spf) { spf_ = spf; }
 
+size_t Record::encodeItem(const nlohmann::json& source, char* target,
+                          size_t max_size, bool debug)
+{
+    return encodeRecord(source, target, max_size, debug);
+}
+
+size_t Record::encodeRecord(const nlohmann::json& record_json, char* target,
+                            size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding record '" << name_ << "'" << logendl;
+
+    // The FSPEC is already in the JSON from the decode step.
+    // Reconstruct it exactly as it was.
+    const json& fspec_bits = record_json.at("FSPEC");
+    traced_assert(fspec_bits.size() % 8 == 0);
+
+    // Encode FSPEC using the ExtendableBitsItemParser
+    // Build a temporary JSON with the FSPEC for the field_specification_ encoder
+    json fspec_source;
+    fspec_source["FSPEC"] = fspec_bits;
+    size_t written_bytes = field_specification_->encodeItem(fspec_source, target, max_size, debug);
+
+    if (debug)
+        loginf << "encoding record '" << name_ << "' FSPEC " << written_bytes << " bytes" << logendl;
+
+    // Encode base UAP items
+    size_t uap_cnt{0};
+    size_t num_fspec_bits_val = fspec_bits.size();
+
+    bool special_purpose_field_present{false};
+    bool reserved_expansion_field_present{false};
+
+    size_t uap_size = uap_items_.size();
+    for (; uap_cnt < num_fspec_bits_val && uap_cnt < uap_size; ++uap_cnt)
+    {
+        if (!fspec_bits[uap_cnt].get<bool>())
+            continue;
+
+        ItemParserBase* item_parser = uap_items_[uap_cnt];
+        if (!item_parser)
+        {
+            const auto& item_name = uap_names_[uap_cnt];
+            if (item_name == "SP")
+                special_purpose_field_present = true;
+            else if (item_name == "RE")
+                reserved_expansion_field_present = true;
+            continue;
+        }
+
+        if (debug)
+            loginf << "encoding record '" << name_ << "' data item '" << uap_names_[uap_cnt]
+                   << "'" << logendl;
+
+        written_bytes += item_parser->encodeItem(record_json, target + written_bytes,
+                                                 max_size - written_bytes, debug);
+    }
+
+    // Conditional UAP
+    if (has_conditional_uap_)
+    {
+        std::string json_value = getValue(record_json, debug);
+
+        if (!conditional_uap_names_.count(json_value))
+            throw runtime_error("encoding: conditional uap data item value '" + json_value +
+                                "' not defined");
+
+        const auto& current_uap_names = conditional_uap_names_.at(json_value);
+        const auto& current_uap_items = conditional_uap_items_.at(json_value);
+        size_t cond_uap_size = current_uap_items.size();
+
+        for (size_t cond_idx = 0; uap_cnt < num_fspec_bits_val && cond_idx < cond_uap_size;
+             ++uap_cnt, ++cond_idx)
+        {
+            if (!fspec_bits[uap_cnt].get<bool>())
+                continue;
+
+            ItemParserBase* item_parser = current_uap_items[cond_idx];
+            if (!item_parser)
+            {
+                const auto& item_name = current_uap_names[cond_idx];
+                if (item_name == "SP")
+                    special_purpose_field_present = true;
+                else if (item_name == "RE")
+                    reserved_expansion_field_present = true;
+                continue;
+            }
+
+            if (debug)
+                loginf << "encoding record '" << name_ << "' conditional data item '"
+                       << current_uap_names[cond_idx] << "'" << logendl;
+
+            written_bytes += item_parser->encodeItem(record_json, target + written_bytes,
+                                                     max_size - written_bytes, debug);
+        }
+    }
+
+    // Reserved Expansion Field
+    if (reserved_expansion_field_present && record_json.contains("REF"))
+    {
+        const json& ref_json = record_json.at("REF");
+
+        if (ref_ && ref_json.is_object())
+        {
+            // encode REF content into a temp buffer to measure length
+            char ref_buf[4096];
+            size_t ref_bytes = ref_->encodeItem(ref_json, ref_buf, sizeof(ref_buf), debug);
+
+            // write length byte (includes itself)
+            target[written_bytes] = static_cast<char>(ref_bytes + 1);
+            written_bytes += 1;
+
+            // copy REF content
+            memcpy(target + written_bytes, ref_buf, ref_bytes);
+            written_bytes += ref_bytes;
+        }
+        else if (ref_json.is_string())
+        {
+            // hex string fallback
+            std::string hex_str = ref_json.get<std::string>();
+            size_t ref_bytes = hex_str.size() / 2;
+
+            target[written_bytes] = static_cast<char>(ref_bytes + 1);
+            written_bytes += 1;
+
+            hex2bin(hex_str.c_str(), target + written_bytes);
+            written_bytes += ref_bytes;
+        }
+    }
+
+    // Special Purpose Field
+    if (special_purpose_field_present && record_json.contains("SPF"))
+    {
+        const json& spf_json = record_json.at("SPF");
+
+        if (spf_ && spf_json.is_object())
+        {
+            char spf_buf[4096];
+            size_t spf_bytes = spf_->encodeItem(spf_json, spf_buf, sizeof(spf_buf), debug);
+
+            target[written_bytes] = static_cast<char>(spf_bytes + 1);
+            written_bytes += 1;
+
+            memcpy(target + written_bytes, spf_buf, spf_bytes);
+            written_bytes += spf_bytes;
+        }
+        else if (spf_json.is_string())
+        {
+            std::string hex_str = spf_json.get<std::string>();
+            size_t spf_bytes = hex_str.size() / 2;
+
+            target[written_bytes] = static_cast<char>(spf_bytes + 1);
+            written_bytes += 1;
+
+            hex2bin(hex_str.c_str(), target + written_bytes);
+            written_bytes += spf_bytes;
+        }
+    }
+
+    if (debug)
+        loginf << "encoding record '" << name_ << "' done, " << written_bytes << " bytes"
+               << logendl;
+
+    return written_bytes;
+}
+
 void Record::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : items_)
