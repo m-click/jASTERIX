@@ -33,6 +33,7 @@ target_sources( test_categories
         "${CMAKE_CURRENT_LIST_DIR}/test_cat247_1.2.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/test_cat252_7.0.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/test_encode.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/test_bounds.cpp"
 )
 
 target_sources( test_limits
