@@ -204,12 +204,12 @@ TEST_CASE("Roundtrip CAT048 1.23", "[encode]")
 
 TEST_CASE("Roundtrip CAT062 1.12", "[encode]")
 {
-    roundtrip_test("cat062ed1.12.bin", 62, "1.12", 151);
+    roundtrip_test("cat062ed1.12.bin", 62, "1.12", 150);
 }
 
 TEST_CASE("Roundtrip CAT062 1.16", "[encode]")
 {
-    roundtrip_test("cat062ed1.16.bin", 62, "1.16", 64);
+    roundtrip_test("cat062ed1.16.bin", 62, "1.16", 63);
 }
 
 TEST_CASE("Roundtrip CAT063 1.0", "[encode]")

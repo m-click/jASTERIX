@@ -41,6 +41,7 @@ class ItemParser : public ItemParserBase
 protected:
     std::string number_;
     std::vector<std::unique_ptr<ItemParserBase>> data_fields_;
+    std::vector<bool> data_field_optional_;  // true if data_field[i] has "optional": true
 };
 
 }  // namespace jASTERIX

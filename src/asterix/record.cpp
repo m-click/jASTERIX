@@ -16,6 +16,7 @@
  */
 
 #include "record.h"
+#include "extendablebitsitemparser.h"
 
 #include "logger.h"
 #include "string_conv.h"
@@ -187,10 +188,10 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
         return parsed_bytes;
     }
 
-    parsed_bytes = field_specification_->parseItem(data, index + parsed_bytes, size, parsed_bytes, total_size,
-                                                   target, debug);
-
-    const json& fspec_bits = target.at("FSPEC");
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(field_specification_.get());
+    std::vector<bool> fspec_bits;
+    parsed_bytes = fspec_parser->parseItemBits(data, index + parsed_bytes, size, parsed_bytes,
+                                               total_size, fspec_bits, debug);
 
     if (fspec_bits.size() > max_fspec_bits_)
         throw runtime_error("record item '" + name_ +
@@ -212,7 +213,7 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
         if (debug)
             loginf << " item name '" + uap_names_[uap_cnt] + "'" << logendl;
 
-        if (!fspec_bits[uap_cnt].get<bool>())
+        if (!fspec_bits[uap_cnt])
             continue;
 
         ItemParserBase* item_parser = uap_items_[uap_cnt];
@@ -289,7 +290,7 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
                 }
             }
 
-            if (!fspec_bits[uap_cnt].get<bool>())
+            if (!fspec_bits[uap_cnt])
                 continue;
 
             ItemParserBase* item_parser = current_uap_items[cond_idx];
@@ -567,21 +568,94 @@ size_t Record::encodeRecord(const nlohmann::json& record_json, char* target,
     if (debug)
         loginf << "encoding record '" << name_ << "'" << logendl;
 
-    // The FSPEC is already in the JSON from the decode step.
-    // Reconstruct it exactly as it was.
-    const json& fspec_bits = record_json.at("FSPEC");
-    traced_assert(fspec_bits.size() % 8 == 0);
+    // Reconstruct FSPEC from which data items are present in the JSON
+    // First pass: determine which UAP positions have data
+    std::vector<bool> fspec_bits;
 
-    // Encode FSPEC using the ExtendableBitsItemParser
-    // Build a temporary JSON with the FSPEC for the field_specification_ encoder
-    json fspec_source;
-    fspec_source["FSPEC"] = fspec_bits;
-    size_t written_bytes = field_specification_->encodeItem(fspec_source, target, max_size, debug);
+    // Collect all UAP names (base + conditional)
+    std::vector<const std::string*> all_uap_names;
+    std::vector<ItemParserBase*> all_uap_items;
+
+    for (size_t i = 0; i < uap_names_.size(); ++i)
+    {
+        all_uap_names.push_back(&uap_names_[i]);
+        all_uap_items.push_back(uap_items_[i]);
+    }
+
+    const std::vector<std::string>* cond_names_ptr = nullptr;
+    const std::vector<ItemParserBase*>* cond_items_ptr = nullptr;
+
+    if (has_conditional_uap_)
+    {
+        std::string json_value = getValue(record_json, debug);
+        if (conditional_uap_names_.count(json_value))
+        {
+            cond_names_ptr = &conditional_uap_names_.at(json_value);
+            cond_items_ptr = &conditional_uap_items_.at(json_value);
+            for (size_t i = 0; i < cond_names_ptr->size(); ++i)
+            {
+                all_uap_names.push_back(&(*cond_names_ptr)[i]);
+                all_uap_items.push_back((*cond_items_ptr)[i]);
+            }
+        }
+    }
+
+    // Build raw FSPEC bits (without FX bits — those are at positions 7, 15, 23...)
+    size_t total_uap = all_uap_names.size();
+    fspec_bits.resize(total_uap, false);
+
+    for (size_t i = 0; i < total_uap; ++i)
+    {
+        const std::string& item_name = *all_uap_names[i];
+        if (item_name == "FX")
+            continue;  // FX bits computed below
+        else if (item_name == "-")
+            continue;  // spare bit
+        else if (item_name == "SP")
+            fspec_bits[i] = record_json.contains("SPF");
+        else if (item_name == "RE")
+            fspec_bits[i] = record_json.contains("REF");
+        else
+            fspec_bits[i] = (all_uap_items[i] != nullptr && record_json.contains(item_name));
+    }
+
+    // Determine how many FSPEC bytes needed and set FX bits
+    // FX bit is at position 7, 15, 23... (last bit of each 8-bit group)
+    // Pad to full bytes
+    size_t num_bytes = (total_uap + 7) / 8;
+    fspec_bits.resize(num_bytes * 8, false);
+
+    // Find last byte that has any data bit set
+    size_t last_needed_byte = 0;
+    for (size_t byte_idx = 0; byte_idx < num_bytes; ++byte_idx)
+    {
+        for (size_t bit = 0; bit < 7; ++bit)  // skip FX position (bit 7 of group)
+        {
+            if (fspec_bits[byte_idx * 8 + bit])
+            {
+                last_needed_byte = byte_idx;
+                break;
+            }
+        }
+    }
+
+    // Set FX bits: byte N's FX = 1 if we need byte N+1
+    for (size_t byte_idx = 0; byte_idx < last_needed_byte; ++byte_idx)
+        fspec_bits[byte_idx * 8 + 7] = true;   // FX = 1 (extend)
+    // last_needed_byte's FX = 0 (no more extension)
+    fspec_bits[last_needed_byte * 8 + 7] = false;
+
+    // Trim to actual size
+    fspec_bits.resize((last_needed_byte + 1) * 8);
+
+    // Encode FSPEC
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(field_specification_.get());
+    size_t written_bytes = fspec_parser->encodeBits(fspec_bits, target, max_size, debug);
 
     if (debug)
         loginf << "encoding record '" << name_ << "' FSPEC " << written_bytes << " bytes" << logendl;
 
-    // Encode base UAP items
+    // Encode data items
     size_t uap_cnt{0};
     size_t num_fspec_bits_val = fspec_bits.size();
 
@@ -591,7 +665,7 @@ size_t Record::encodeRecord(const nlohmann::json& record_json, char* target,
     size_t uap_size = uap_items_.size();
     for (; uap_cnt < num_fspec_bits_val && uap_cnt < uap_size; ++uap_cnt)
     {
-        if (!fspec_bits[uap_cnt].get<bool>())
+        if (!fspec_bits[uap_cnt])
             continue;
 
         ItemParserBase* item_parser = uap_items_[uap_cnt];
@@ -614,28 +688,20 @@ size_t Record::encodeRecord(const nlohmann::json& record_json, char* target,
     }
 
     // Conditional UAP
-    if (has_conditional_uap_)
+    if (has_conditional_uap_ && cond_names_ptr)
     {
-        std::string json_value = getValue(record_json, debug);
-
-        if (!conditional_uap_names_.count(json_value))
-            throw runtime_error("encoding: conditional uap data item value '" + json_value +
-                                "' not defined");
-
-        const auto& current_uap_names = conditional_uap_names_.at(json_value);
-        const auto& current_uap_items = conditional_uap_items_.at(json_value);
-        size_t cond_uap_size = current_uap_items.size();
+        size_t cond_uap_size = cond_items_ptr->size();
 
         for (size_t cond_idx = 0; uap_cnt < num_fspec_bits_val && cond_idx < cond_uap_size;
              ++uap_cnt, ++cond_idx)
         {
-            if (!fspec_bits[uap_cnt].get<bool>())
+            if (!fspec_bits[uap_cnt])
                 continue;
 
-            ItemParserBase* item_parser = current_uap_items[cond_idx];
+            ItemParserBase* item_parser = (*cond_items_ptr)[cond_idx];
             if (!item_parser)
             {
-                const auto& item_name = current_uap_names[cond_idx];
+                const auto& item_name = (*cond_names_ptr)[cond_idx];
                 if (item_name == "SP")
                     special_purpose_field_present = true;
                 else if (item_name == "RE")
@@ -645,7 +711,7 @@ size_t Record::encodeRecord(const nlohmann::json& record_json, char* target,
 
             if (debug)
                 loginf << "encoding record '" << name_ << "' conditional data item '"
-                       << current_uap_names[cond_idx] << "'" << logendl;
+                       << (*cond_names_ptr)[cond_idx] << "'" << logendl;
 
             written_bytes += item_parser->encodeItem(record_json, target + written_bytes,
                                                      max_size - written_bytes, debug);

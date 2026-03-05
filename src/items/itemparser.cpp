@@ -61,6 +61,8 @@ ItemParser::ItemParser(const nlohmann::json& item_definition, const std::string&
         item = ItemParserBase::createItemParser(data_item_it, long_name_);
         traced_assert(item);
         data_fields_.push_back(std::unique_ptr<ItemParserBase>{item});
+        data_field_optional_.push_back(
+            data_item_it.contains("optional") && data_item_it.at("optional") == true);
     }
 }
 
@@ -101,10 +103,27 @@ size_t ItemParser::encodeItem(const nlohmann::json& source, char* target,
 
     size_t written_bytes{0};
 
+    // Track byte offsets per data_field for FX bit fixup
+    std::vector<size_t> field_offsets;
+    std::vector<size_t> field_sizes;
+
     for (auto& df_item : data_fields_)
     {
-        written_bytes += df_item->encodeItem(item_source, target + written_bytes,
-                                             max_size - written_bytes, debug);
+        field_offsets.push_back(written_bytes);
+        size_t bytes = df_item->encodeItem(item_source, target + written_bytes,
+                                           max_size - written_bytes, debug);
+        field_sizes.push_back(bytes);
+        written_bytes += bytes;
+    }
+
+    // Fixup FX bits: if an optional extension was encoded,
+    // set bit 0 of the last byte of the preceding field
+    for (size_t i = 1; i < data_fields_.size(); ++i)
+    {
+        if (data_field_optional_[i] && field_sizes[i] > 0 && field_sizes[i - 1] > 0)
+        {
+            target[field_offsets[i - 1] + field_sizes[i - 1] - 1] |= 0x01;
+        }
     }
 
     if (debug)

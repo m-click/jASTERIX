@@ -87,15 +87,28 @@ size_t FixedBitFieldItemParser::parseItem(const char* data, size_t index, size_t
         loginf << "parsing fixed bitfield item '" << name_ << "' index " << index << " size "
                << size << " current parsed bytes " << current_parsed_bytes << logendl;
 
-    if (optional_ &&
-        !variableHasValue(target, optional_variable_name_parts_, optional_variable_value_))
+    if (optional_)
     {
-        if (debug)  //  in '" << parent.dump(4) << "'"
-            loginf << "parsing fixed bitfield item '" << name_ << "' skipped since variable '"
-                   << optional_variable_name_ << "' not set in '" << target.dump(4) << "'"
-                   << logendl;
+        bool var_set = variableHasValue(target, optional_variable_name_parts_,
+                                        optional_variable_value_);
 
-        return 0;  // no parse
+        // Fallback: if variable not found in JSON (e.g. no_output FX bit),
+        // read it from the binary data — FX bits are always bit 0 of the preceding byte
+        if (!var_set && index > 0 &&
+            !target.contains(optional_variable_name_parts_.front()))
+        {
+            unsigned int bit_val = static_cast<unsigned char>(data[index - 1]) & 0x01;
+            var_set = (bit_val == optional_variable_value_.get<unsigned int>());
+        }
+
+        if (!var_set)
+        {
+            if (debug)
+                loginf << "parsing fixed bitfield item '" << name_ << "' skipped since variable '"
+                       << optional_variable_name_ << "' not set" << logendl;
+
+            return 0;  // no parse
+        }
     }
 
     if (index + length_ > total_size)
@@ -122,13 +135,33 @@ size_t FixedBitFieldItemParser::encodeItem(const nlohmann::json& source, char* t
     if (debug)
         loginf << "encoding fixed bitfield item '" << name_ << "' length " << length_ << logendl;
 
-    if (optional_ &&
-        !variableHasValue(source, optional_variable_name_parts_, optional_variable_value_))
+    if (optional_)
     {
-        if (debug)
-            loginf << "encoding fixed bitfield item '" << name_ << "' skipped (optional not set)"
-                   << logendl;
-        return 0;
+        bool var_set = variableHasValue(source, optional_variable_name_parts_,
+                                        optional_variable_value_);
+
+        // Fallback: if variable not found in JSON (e.g. no_output FX bit),
+        // check if any of this bitfield's sub-items exist in the source
+        if (!var_set && !source.contains(optional_variable_name_parts_.front()))
+        {
+            var_set = false;
+            for (auto& sub_item_it : items_)
+            {
+                if (source.contains(sub_item_it->name()))
+                {
+                    var_set = true;
+                    break;
+                }
+            }
+        }
+
+        if (!var_set)
+        {
+            if (debug)
+                loginf << "encoding fixed bitfield item '" << name_ << "' skipped (optional not set)"
+                       << logendl;
+            return 0;
+        }
     }
 
     // zero-fill buffer so sub-items can OR their bits in

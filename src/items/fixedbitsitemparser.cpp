@@ -65,6 +65,8 @@ FixedBitsItemParser::FixedBitsItemParser(const nlohmann::json& item_definition, 
     else if (data_type_ == "ascii_characters")   data_type_enum_ = DataType::AsciiCharacters;
     // unknown types will be caught by the constructor's existing validation below
 
+    no_output_ = item_definition.contains("no_output") && item_definition.at("no_output") == true;
+
     if (item_definition.contains("lsb"))
     {
         has_lsb_ = true;
@@ -318,6 +320,9 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
         throw runtime_error("FixedBitsItemParser '" + name_ + "': would read " +
             to_string(byte_length_) + " bytes at index " + to_string(index) +
             " but total_size is " + to_string(total_size));
+
+    if (no_output_)
+        return 0;
 
     unsigned char tmp1{0};
 
@@ -645,6 +650,9 @@ size_t FixedBitsItemParser::encodeItem(const nlohmann::json& source, char* targe
     if (debug)
         loginf << "encoding fixed bits item '" << name_ << "' byte_length " << byte_length_
                << " start_bit " << start_bit_ << " bit_length " << bit_length_ << logendl;
+
+    if (no_output_)
+        return 0;
 
     if (byte_length_ == 1)
     {

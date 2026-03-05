@@ -16,6 +16,8 @@
  */
 
 #include "compounditemparser.h"
+#include "extendablebitsitemparser.h"
+#include "optionalitemparser.h"
 #include "logger.h"
 #include "traced_assert.h"
 
@@ -78,8 +80,10 @@ size_t CompoundItemParser::parseItem(const char* data, size_t index, size_t size
     if (debug)
         loginf << "parsing compound item '" + name_ + "' field specification" << logendl;
 
-    parsed_bytes = field_specification_->parseItem(
-                data, index + parsed_bytes, size, parsed_bytes, total_size, target, debug);
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(field_specification_.get());
+    std::vector<bool> field_bits;
+    parsed_bytes = fspec_parser->parseItemBits(
+                data, index + parsed_bytes, size, parsed_bytes, total_size, field_bits, debug);
 
     if (debug)
         loginf << "parsing compound item '" + name_ + "' data items" << logendl;
@@ -90,8 +94,18 @@ size_t CompoundItemParser::parseItem(const char* data, size_t index, size_t size
             loginf << "parsing compound item '" << name_ << "' data item '" << data_item_it->name()
                    << "' index " << index + parsed_bytes << logendl;
 
-        parsed_bytes += data_item_it->parseItem(
-                    data, index + parsed_bytes, size, parsed_bytes, total_size, target, debug);
+        auto* opt_parser = dynamic_cast<OptionalItemParser*>(data_item_it.get());
+        if (opt_parser)
+        {
+            parsed_bytes += opt_parser->parseItem(
+                        data, index + parsed_bytes, size, parsed_bytes, total_size,
+                        target, debug, field_bits);
+        }
+        else
+        {
+            parsed_bytes += data_item_it->parseItem(
+                        data, index + parsed_bytes, size, parsed_bytes, total_size, target, debug);
+        }
 
         if (index + parsed_bytes > total_size)
             throw runtime_error("CompoundItemParser '" + name_ + "': parsed " +
@@ -108,10 +122,44 @@ size_t CompoundItemParser::encodeItem(const nlohmann::json& source, char* target
     if (debug)
         loginf << "encoding compound item '" << name_ << "'" << logendl;
 
+    // Reconstruct field specification from which optional sub-items are present
+    // Each sub-item has a bitfield_index_ that maps to the actual bit position
+    size_t max_bit_index = 0;
+    for (auto& data_item_it : items_)
+    {
+        auto* opt_parser = dynamic_cast<OptionalItemParser*>(data_item_it.get());
+        if (opt_parser && opt_parser->bitfieldIndex() >= max_bit_index)
+            max_bit_index = opt_parser->bitfieldIndex();
+    }
+
+    size_t num_bytes = (max_bit_index + 8) / 8;
+    std::vector<bool> field_bits(num_bytes * 8, false);
+
+    for (auto& data_item_it : items_)
+    {
+        auto* opt_parser = dynamic_cast<OptionalItemParser*>(data_item_it.get());
+        if (opt_parser && source.contains(data_item_it->name()))
+            field_bits[opt_parser->bitfieldIndex()] = true;
+    }
+
+    // Find last byte that has any data bit set
+    size_t last_needed_byte = 0;
+    for (size_t byte_idx = 0; byte_idx < num_bytes; ++byte_idx)
+        for (size_t bit = 0; bit < 7; ++bit)
+            if (field_bits[byte_idx * 8 + bit])
+                last_needed_byte = byte_idx;
+
+    // Set FX bits
+    for (size_t byte_idx = 0; byte_idx < last_needed_byte; ++byte_idx)
+        field_bits[byte_idx * 8 + 7] = true;
+    field_bits[last_needed_byte * 8 + 7] = false;
+    field_bits.resize((last_needed_byte + 1) * 8);
+
     size_t written_bytes{0};
 
     // encode field specification
-    written_bytes = field_specification_->encodeItem(source, target, max_size, debug);
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(field_specification_.get());
+    written_bytes = fspec_parser->encodeBits(field_bits, target, max_size, debug);
 
     // encode data items
     for (auto& data_item_it : items_)
@@ -120,8 +168,17 @@ size_t CompoundItemParser::encodeItem(const nlohmann::json& source, char* target
             loginf << "encoding compound item '" << name_ << "' data item '"
                    << data_item_it->name() << "'" << logendl;
 
-        written_bytes += data_item_it->encodeItem(source, target + written_bytes,
-                                                  max_size - written_bytes, debug);
+        auto* opt_parser = dynamic_cast<OptionalItemParser*>(data_item_it.get());
+        if (opt_parser)
+        {
+            written_bytes += opt_parser->encodeItem(source, target + written_bytes,
+                                                    max_size - written_bytes, debug, field_bits);
+        }
+        else
+        {
+            written_bytes += data_item_it->encodeItem(source, target + written_bytes,
+                                                      max_size - written_bytes, debug);
+        }
     }
 
     return written_bytes;

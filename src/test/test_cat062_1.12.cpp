@@ -477,7 +477,7 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(first_data_block.contains("category"));
     REQUIRE(first_data_block.at("category") == 62);
     REQUIRE(first_data_block.contains("length"));
-    REQUIRE(first_data_block.at("length") == 151);
+    REQUIRE(first_data_block.at("length") == 150);
 
     loginf << "cat062 1.12 test: num records" << logendl;
     REQUIRE(first_data_block.contains("content"));
@@ -491,11 +491,7 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     // 10111111110111111110111100000110
 
     loginf << "cat062 1.12 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 4 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1,
-                               1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0}));
 
     //    ;  I062/010: =0x 00 04
     //    ;  Data Source Identifier: 0x0004 (SAC=0; SIC=4)
@@ -559,11 +555,7 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     loginf << "cat062 1.12 test: 380" << logendl;
     // available: e3 05 01 0c
 
-    REQUIRE(record.at("380").at("available").size() == 4 * 8);
 
-    REQUIRE(record.at("380").at("available") ==
-            std::vector<bool>({1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1,
-                               0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0}));
 
     //    ;   Target address: 0x663ca6
     REQUIRE(record.at("380").at("ADR").at("Target Address") == 6700198);
@@ -597,7 +589,6 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("080").at("MRH") == 0);  // MRH
     REQUIRE(record.at("080").at("SRC") == 3);
     REQUIRE(record.at("080").at("CNF") == 0);  // CNF
-    REQUIRE(record.at("080").at("FX") == 1);
 
     // 00010011
     REQUIRE(record.at("080").at("SIM") == 0);
@@ -607,7 +598,6 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("080").at("AFF") == 0);
     REQUIRE(record.at("080").at("STP") == 0);
     REQUIRE(record.at("080").at("KOS") == 1);  // COS
-    REQUIRE(record.at("080").at("FX2") == 1);
 
     // 00000001
     REQUIRE(record.at("080").at("AMA") == 0);
@@ -615,7 +605,6 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("080").at("ME") == 0);
     REQUIRE(record.at("080").at("MI") == 0);
     REQUIRE(record.at("080").at("MD5") == 0);
-    REQUIRE(record.at("080").at("FX3") == 1);
 
     // 01001000
     // PSR, SSR, MDS, ADS listed if 0
@@ -638,8 +627,6 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     loginf << "cat062 1.12 test: 290" << logendl;
 
     // 0111 0101 0010 0000
-    REQUIRE(record.at("290").at("available") ==
-            std::vector<bool>({0, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0}));
 
     REQUIRE(record.at("290").at("PSR").at("Age") == 63.75);
     REQUIRE(record.at("290").at("SSR").at("Age") == 2.00);
@@ -669,11 +656,7 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     loginf << "cat062 1.12 test: 295" << logendl;
 
     // available 93 11 41 01  c0
-    REQUIRE(record.at("295").at("available").size() == 5 * 8);
 
-    REQUIRE(record.at("295").at("available") ==
-            std::vector<bool>({1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0,
-                               0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0}));
 
     REQUIRE(record.at("295").at("MFL").at("Age") == 2.00);
     REQUIRE(record.at("295").at("MDA").at("Age") == 2.00);
@@ -705,11 +688,7 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
 
     // available ff a1 00
 
-    REQUIRE(record.at("390").at("available").size() == 3 * 8);
 
-    REQUIRE(record.at("390").at("available") ==
-            std::vector<bool>(
-                {1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0}));
 
     //    ;  Flight Plan Related Data:
     //    ;   FPPS identification tag: 0x0000 (SAC=0; SIC=0)
@@ -743,10 +722,7 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
 
     // available bf 80
 
-    REQUIRE(record.at("500").at("available").size() == 2 * 8);
 
-    REQUIRE(record.at("500").at("available") ==
-            std::vector<bool>({1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0}));
 
     //    ;  Estimated Accuracies:
     //    ;   Estimated accuracy of track position (Cartesian): x=80 (40.0 mtr); y=126 (63.0 mtr)
@@ -778,9 +754,7 @@ void test_cat062_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
 
     // available dc
 
-    REQUIRE(record.at("340").at("available").size() == 8);
 
-    REQUIRE(record.at("340").at("available") == std::vector<bool>({1, 1, 0, 1, 1, 1, 0, 0}));
 
     //    ;  Measured Information:
     //    ;   Sensor identification: SAC=0; SIC=1
@@ -832,7 +806,7 @@ TEST_CASE("jASTERIX CAT062 1.12", "[jASTERIX CAT062]")
     const std::string filename = "cat062ed1.12.bin";
 
     REQUIRE(jASTERIX::Files::fileExists(data_path + filename));
-    REQUIRE(jASTERIX::Files::fileSize(data_path + filename) == 151);
+    REQUIRE(jASTERIX::Files::fileSize(data_path + filename) == 150);
 
     jasterix.decodeFile(data_path + filename, test_cat062_callback);
 

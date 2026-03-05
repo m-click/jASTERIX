@@ -71,6 +71,8 @@ class FixedBitsItemParser : public ItemParserBase
     std::vector<unsigned char> chars_bitmasks1;
     std::vector<unsigned int> chars_bitmasks4;
     std::vector<size_t> chars_bitmasks8;
+
+    bool no_output_{false};
 };
 
 }  // namespace jASTERIX

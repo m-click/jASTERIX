@@ -198,10 +198,7 @@ void test_cat048_115_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     // 111111111111011100000010
 
     loginf << "cat048 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 3 * 8);
 
-    REQUIRE(record.at("FSPEC") == std::vector<bool>({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                                                     0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0}));
 
     //    ; Data Record:
     //    ;  I048/010: =0x 00 01
@@ -227,7 +224,6 @@ void test_cat048_115_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     REQUIRE(record.at("020").at("RDP") == 1);
     REQUIRE(record.at("020").at("SPI") == 0);
     REQUIRE(record.at("020").at("RAB") == 0);
-    REQUIRE(record.at("020").at("FX") == 0);
 
     //    ;  I048/040: =0x 49 ec 3f c4
     //    ;  Measured Position: srg=18924 (73.922 nmi); azm=16324 (89.670 deg)
@@ -260,7 +256,6 @@ void test_cat048_115_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     loginf << "cat048 test: 130" << logendl;
 
     // 00100000
-    REQUIRE(record.at("130").at("available") == std::vector<bool>({0, 0, 1, 0, 0, 0, 0, 0}));
     REQUIRE(record.at("130").at("SAM").at("value") == -63);
 
     //    ;  I048/220: =0x ab 4c bd

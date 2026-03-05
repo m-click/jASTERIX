@@ -256,11 +256,7 @@ void test_cat030_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     // 11111111 11011101 10111011 11100001 00000001 01000001 00000001 10000000
 
     loginf << "cat030 7.0 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 8 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 
-                               0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, }));
 
     // ;  I030/010: =0x 00 01
     // ;  Server Identification Tag: 0x0001 (SAC=0; SIC=1)

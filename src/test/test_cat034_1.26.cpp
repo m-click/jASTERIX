@@ -160,9 +160,7 @@ void test_cat034_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    ; FSPEC: 0x f6
 
     loginf << "cat034 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 8);
 
-    REQUIRE(record.at("FSPEC") == std::vector<bool>({1, 1, 1, 1, 0, 1, 1, 0}));
 
     //    ; Data Record:
     //    ;  I034/010: =0x 00 02

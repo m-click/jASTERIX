@@ -68,7 +68,6 @@ size_t ExtendableItemParser::parseItem(const char* data, size_t index, size_t si
     unsigned int extend = 1;
     unsigned int cnt = 0;
 
-    //traced_assert(!target.contains(name_));  // hot path — O(N) json lookup per field
     json& j_data = target[name_] = json::array();
 
     while (extend)
@@ -87,15 +86,15 @@ size_t ExtendableItemParser::parseItem(const char* data, size_t index, size_t si
             json& current = j_data[cnt];
             parsed_bytes += data_item_it->parseItem(
                         data, index + parsed_bytes, size, parsed_bytes, total_size, current, debug);
-
-            if (debug && !current.contains("extend"))
-                throw runtime_error("parsing extendable item '" + name_ +
-                                    "' without extend information");
-
-            extend = current.at("extend");
-
-            ++cnt;
         }
+
+        // Read extend bit directly from binary — always bit 0 of the last byte parsed
+        extend = static_cast<unsigned char>(data[index + parsed_bytes - 1]) & 0x01;
+
+        if (debug)
+            loginf << "parsing extendable item '" << name_ << "' extend = " << extend << logendl;
+
+        ++cnt;
     }
 
     return parsed_bytes;
@@ -119,6 +118,12 @@ size_t ExtendableItemParser::encodeItem(const nlohmann::json& source, char* targ
             written_bytes += data_item_it->encodeItem(element, target + written_bytes,
                                                       max_size - written_bytes, debug);
         }
+
+        // Set extend bit (bit 0 of last byte): 1 for all except last element
+        if (cnt < j_array.size() - 1)
+            target[written_bytes - 1] |= 0x01;   // extend = 1
+        else
+            target[written_bytes - 1] &= ~0x01;  // extend = 0
     }
 
     return written_bytes;

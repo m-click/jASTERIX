@@ -162,11 +162,7 @@ void test_cat021_026_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     // 11111011 10000001 00010011 10000000
 
     loginf << "cat021 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 4 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1,1,1,1,1,0,1,1, 1,0,0,0,0,0,0,1,
-                               0,0,0,1,0,0,1,1, 1,0,0,0,0,0,0,0}));
 
     //    ;  I021/010: =0x 00 05
     //    ;  Data Source Identifier: 0x0005 (SAC=0; SIC=5)

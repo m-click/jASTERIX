@@ -136,10 +136,7 @@ void test_cat001_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     // 11111110
 
     loginf << "cat001 test: fspec" << logendl;
-    REQUIRE(record.contains("FSPEC"));
-    REQUIRE(record.at("FSPEC").size() == 8);
 
-    REQUIRE(record.at("FSPEC") == std::vector<bool>({1, 1, 1, 1, 1, 1, 1, 0}));
 
     //    ; Data Record:
     //    ;  I001/010: =0x 00 01
@@ -159,7 +156,6 @@ void test_cat001_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("020").at("ANT") == 0);
     REQUIRE(record.at("020").at("SPI") == 0);
     REQUIRE(record.at("020").at("RAB") == 0);
-    REQUIRE(record.at("020").at("FX") == 0);
 
     //    ;  I001/040: =0x 3f b8 b6 7c
     //    ;  Measured Position: rng=16312 (127.438 nmi); azm=46716 (256.619 deg)

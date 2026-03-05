@@ -119,10 +119,7 @@ void test_cat252_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    11111100
 
     loginf << "cat252 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 1 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 1, 1, 1, 1, 1, 0, 0}));
 
     // ;  I252/010: =0x 00 07
     // ;  Server Identification Tag: 0x0007 (SAC=0; SIC=7)
@@ -157,14 +154,12 @@ void test_cat252_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     loginf << "cat252 test: 110" << logendl;
     REQUIRE(record.at("110").at("BS") == 1);
     REQUIRE(record.at("110").at("C1") == 0);
-    REQUIRE(record.at("110").at("FX") == 0);
 
     // ;  I252/330: =0x 01 40 0b
     // ;  Service Related Report: nature=8; code=11
     // ;   Service synchronisation report: batch/sector 11
 
     loginf << "cat252 test: 330" << logendl;
-    REQUIRE(record.at("330").at("REP") == 1);
     REQUIRE(record.at("330").at("SERVICE RELATED REPORT").size() == 1);
     REQUIRE(record.at("330").at("SERVICE RELATED REPORT")[0].at("CODE") == 11);
     REQUIRE(record.at("330").at("SERVICE RELATED REPORT")[0].at("NATURE") == 8);

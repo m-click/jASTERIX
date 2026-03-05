@@ -16,6 +16,7 @@
  */
 
 #include "spf.h"
+#include "extendablebitsitemparser.h"
 
 #include "logger.h"
 #include "string_conv.h"
@@ -197,13 +198,10 @@ size_t SpecialPurposeField::parseComplexItem(const char* data, size_t index, siz
         loginf << "parsing complex SpecialPurposeField item '" + name_ + "' field specification"
                << logendl;
 
-    parsed_bytes = complex_field_specification_->parseItem(data, index + parsed_bytes, size,
-                                                           parsed_bytes, total_size, target, debug);
-
-    if (!target.contains("REF_FSPEC"))
-        throw runtime_error("complex SpecialPurposeField item '" + name_ + "' FSPEC not found");
-
-    std::vector<bool> fspec_bits = target.at("REF_FSPEC");
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(complex_field_specification_.get());
+    std::vector<bool> fspec_bits;
+    parsed_bytes = fspec_parser->parseItemBits(data, index + parsed_bytes, size,
+                                               parsed_bytes, total_size, fspec_bits, debug);
 
     //    if (!has_conditional_uap_ && fspec_bits.size() > uap_names_.size())
     //        throw runtime_error ("SpecialPurposeField item '"+name_+"' has more FSPEC bits than
@@ -270,16 +268,43 @@ size_t SpecialPurposeField::encodeItem(const nlohmann::json& source, char* targe
     }
     else if (type_ == "ComplexSpecialPurposeField")
     {
-        // encode field specification (REF_FSPEC)
-        written_bytes = complex_field_specification_->encodeItem(source, target, max_size, debug);
+        // Reconstruct REF_FSPEC from which items are present in source
+        std::vector<bool> fspec_bits;
+        fspec_bits.resize(complex_items_names_.size(), false);
 
-        if (!source.contains("REF_FSPEC"))
-            throw runtime_error("complex SpecialPurposeField item '" + name_ +
-                                "' REF_FSPEC not found in source");
+        size_t uap_cnt = 0;
+        for (const auto& item_name : complex_items_names_)
+        {
+            if (item_name == "FX" || item_name == "-")
+            {
+                uap_cnt++;
+                continue;
+            }
+            fspec_bits[uap_cnt] = (complex_items_.count(item_name) == 1 &&
+                                   source.contains(item_name));
+            uap_cnt++;
+        }
 
-        std::vector<bool> fspec_bits = source.at("REF_FSPEC").get<std::vector<bool>>();
+        // Pad to full bytes and set FX bits
+        size_t num_bytes = (fspec_bits.size() + 7) / 8;
+        fspec_bits.resize(num_bytes * 8, false);
 
-        size_t uap_cnt{0};
+        size_t last_needed_byte = 0;
+        for (size_t byte_idx = 0; byte_idx < num_bytes; ++byte_idx)
+            for (size_t bit = 0; bit < 7; ++bit)
+                if (fspec_bits[byte_idx * 8 + bit])
+                    last_needed_byte = byte_idx;
+
+        for (size_t byte_idx = 0; byte_idx < last_needed_byte; ++byte_idx)
+            fspec_bits[byte_idx * 8 + 7] = true;
+        fspec_bits[last_needed_byte * 8 + 7] = false;
+        fspec_bits.resize((last_needed_byte + 1) * 8);
+
+        auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(
+            complex_field_specification_.get());
+        written_bytes = fspec_parser->encodeBits(fspec_bits, target, max_size, debug);
+
+        uap_cnt = 0;
         size_t num_fspec_bits = fspec_bits.size();
 
         for (const auto& item_name : complex_items_names_)

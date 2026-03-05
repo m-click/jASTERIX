@@ -16,6 +16,7 @@
  */
 
 #include "ref.h"
+#include "extendablebitsitemparser.h"
 
 #include "logger.h"
 #include "string_conv.h"
@@ -109,13 +110,10 @@ size_t ReservedExpansionField::parseItem(const char* data, size_t index, size_t 
         loginf << "parsing ReservedExpansionField item '" + name_ + "' field specification"
                << logendl;
 
-    parsed_bytes = field_specification_->parseItem(
-                data, index + parsed_bytes, size, parsed_bytes, total_size, target, debug);
-
-    if (!target.contains("REF_FSPEC"))
-        throw runtime_error("ReservedExpansionField item '" + name_ + "' FSPEC not found");
-
-    std::vector<bool> fspec_bits = target.at("REF_FSPEC");
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(field_specification_.get());
+    std::vector<bool> fspec_bits;
+    parsed_bytes = fspec_parser->parseItemBits(
+                data, index + parsed_bytes, size, parsed_bytes, total_size, fspec_bits, debug);
 
     //    if (!has_conditional_uap_ && fspec_bits.size() > uap_names_.size())
     //        throw runtime_error ("ReservedExpansionField item '"+name_+"' has more FSPEC bits than
@@ -173,17 +171,41 @@ size_t ReservedExpansionField::encodeItem(const nlohmann::json& source, char* ta
     if (debug)
         loginf << "encoding ReservedExpansionField item '" << name_ << "'" << logendl;
 
-    size_t written_bytes{0};
+    // Reconstruct REF_FSPEC from which items are present in source
+    std::vector<bool> fspec_bits;
+    fspec_bits.resize(items_names_.size(), false);
 
-    // encode field specification (REF_FSPEC)
-    written_bytes = field_specification_->encodeItem(source, target, max_size, debug);
+    size_t uap_cnt = 0;
+    for (const auto& item_name : items_names_)
+    {
+        if (item_name == "FX" || item_name == "-")
+        {
+            uap_cnt++;
+            continue;
+        }
+        fspec_bits[uap_cnt] = (items_.count(item_name) == 1 && source.contains(item_name));
+        uap_cnt++;
+    }
 
-    if (!source.contains("REF_FSPEC"))
-        throw runtime_error("ReservedExpansionField item '" + name_ + "' REF_FSPEC not found in source");
+    // Pad to full bytes and set FX bits (at positions 7, 15, 23...)
+    size_t num_bytes = (fspec_bits.size() + 7) / 8;
+    fspec_bits.resize(num_bytes * 8, false);
 
-    std::vector<bool> fspec_bits = source.at("REF_FSPEC").get<std::vector<bool>>();
+    size_t last_needed_byte = 0;
+    for (size_t byte_idx = 0; byte_idx < num_bytes; ++byte_idx)
+        for (size_t bit = 0; bit < 7; ++bit)
+            if (fspec_bits[byte_idx * 8 + bit])
+                last_needed_byte = byte_idx;
 
-    size_t uap_cnt{0};
+    for (size_t byte_idx = 0; byte_idx < last_needed_byte; ++byte_idx)
+        fspec_bits[byte_idx * 8 + 7] = true;
+    fspec_bits[last_needed_byte * 8 + 7] = false;
+    fspec_bits.resize((last_needed_byte + 1) * 8);
+
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(field_specification_.get());
+    size_t written_bytes = fspec_parser->encodeBits(fspec_bits, target, max_size, debug);
+
+    uap_cnt = 0;
     size_t num_fspec_bits = fspec_bits.size();
 
     for (const auto& item_name : items_names_)

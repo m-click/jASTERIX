@@ -31,13 +31,23 @@ class OptionalItemParser : public ItemParserBase
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) override;
 
+    size_t parseItem(const char* data, size_t index, size_t size,
+                     size_t current_parsed_bytes, size_t total_size,
+                     nlohmann::json& target, bool debug,
+                     const std::vector<bool>& presence_bits);
+
     virtual size_t encodeItem(const nlohmann::json& source, char* target,
                               size_t max_size, bool debug) override;
 
+    size_t encodeItem(const nlohmann::json& source, char* target,
+                      size_t max_size, bool debug,
+                      const std::vector<bool>& presence_bits);
+
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const override;
 
+    unsigned int bitfieldIndex() const { return bitfield_index_; }
+
   protected:
-    std::string bitfield_name_;
     unsigned int bitfield_index_{0};
     std::vector<std::unique_ptr<ItemParserBase>> data_fields_;
 };

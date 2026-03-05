@@ -102,9 +102,7 @@ void test_cat065_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    ; FSPEC: 0x f8
 
     loginf << "cat065 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 8);
 
-    REQUIRE(record.at("FSPEC") == std::vector<bool>({1, 1, 1, 1, 1, 0, 0, 0}));
 
     //    ; Data Record:
     //    ;  I065/010: =0x 00 05

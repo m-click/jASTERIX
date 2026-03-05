@@ -37,7 +37,6 @@ class RepetetiveItemParser : public ItemParserBase
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const override;
 
   protected:
-    std::unique_ptr<ItemParserBase> repetition_item_;
     std::vector<std::unique_ptr<ItemParserBase>> items_;
 };
 

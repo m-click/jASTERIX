@@ -33,6 +33,15 @@ class ExtendableBitsItemParser : public ItemParserBase
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) override;
 
+    // Parse FX-extended bitmask into a local vector without writing to JSON
+    size_t parseItemBits(const char* data, size_t index, size_t size,
+                         size_t current_parsed_bytes, size_t total_size,
+                         std::vector<bool>& out_bits, bool debug);
+
+    // Encode from a pre-built bitfield (when not stored in JSON)
+    size_t encodeBits(const std::vector<bool>& bits, char* target,
+                      size_t max_size, bool debug);
+
     virtual size_t encodeItem(const nlohmann::json& source, char* target,
                               size_t max_size, bool debug) override;
 

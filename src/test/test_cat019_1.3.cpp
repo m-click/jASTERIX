@@ -265,10 +265,7 @@ void test_cat019_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    ; FSPEC: 0x fd e0
 
     loginf << "cat019 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 2 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0}));
 
     //    ; Data Record:
     //    ;  I019/010: =0x 00 03
@@ -333,7 +330,6 @@ void test_cat019_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    ;   id=16; type=6; status=12
 
     loginf << "cat019 test: 552" << logendl;
-    REQUIRE(record.at("552").at("REP") == 16);
     REQUIRE(record.at("552").at("Remote Sensor Detailed Status").size() == 16);
     // 0110 1100
     // spare 0

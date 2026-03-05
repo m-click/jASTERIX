@@ -190,11 +190,7 @@ void test_cat021_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     // 1111010100011011011110110100001110000010
 
     loginf << "cat021 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 5 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1,
-                               1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0}));
 
     //    ;  I021/010: =0x 00 03
     //    ;  Data Source Identifier: 0x0003 (SAC=0; SIC=3)
@@ -213,14 +209,12 @@ void test_cat021_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("040").at("ARC") == 0);
     REQUIRE(record.at("040").at("RC") == 0);
     REQUIRE(record.at("040").at("RAB") == 0);
-    REQUIRE(record.at("040").at("FX") == 1);
 
     REQUIRE(record.at("040").at("GBS") == 0);
     REQUIRE(record.at("040").at("SIM") == 0);
     REQUIRE(record.at("040").at("TST") == 0);
     REQUIRE(record.at("040").at("SAA") == 1);
     REQUIRE(record.at("040").at("CL") == 0);
-    REQUIRE(record.at("040").at("FX2") == 0);
 
     //    ;  I021/161: =0x 05 5f
     //    ;  Track Number: tn=1375

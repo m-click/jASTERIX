@@ -30,11 +30,6 @@ OptionalItemParser::OptionalItemParser(const nlohmann::json& item_definition, co
 {
     traced_assert(type_ == "optional_item");
 
-    if (!item_definition.contains("optional_bitfield_name"))
-        throw runtime_error("optional item '" + name_ + "' parsing without bitfield name");
-
-    bitfield_name_ = item_definition.at("optional_bitfield_name");
-
     if (!item_definition.contains("optional_bitfield_index"))
         throw runtime_error("optional item '" + name_ + "' parsing without bitfield index");
 
@@ -65,39 +60,35 @@ size_t OptionalItemParser::parseItem(const char* data, size_t index, size_t size
                                      size_t current_parsed_bytes, size_t total_size,
                                      nlohmann::json& target, bool debug)
 {
+    // Fallback path — should not be called in normal compound parsing flow
+    // (CompoundItemParser should call the overload with presence_bits)
+    throw runtime_error("OptionalItemParser '" + name_ +
+                        "' parseItem called without presence_bits");
+}
+
+size_t OptionalItemParser::parseItem(const char* data, size_t index, size_t size,
+                                     size_t current_parsed_bytes, size_t total_size,
+                                     nlohmann::json& target, bool debug,
+                                     const std::vector<bool>& presence_bits)
+{
     if (debug)
         loginf << "parsing optional item '" << name_ << "' index " << index << " size " << size
                << " current parsed bytes " << current_parsed_bytes << logendl;
 
-    if (debug && !target.contains(bitfield_name_))
-        throw runtime_error("parsing optional item '" + name_ + "' without defined bitfield '" +
-                            bitfield_name_ + "'");
-
-    const json& bitfield = target.at(bitfield_name_);
-
-    if (debug && !bitfield.is_array())
-        throw runtime_error("parsing optional item '" + name_ + "' with non-array bitfield '" +
-                            bitfield_name_ + "'");
-
-    if (bitfield_index_ >= bitfield.size())
+    if (bitfield_index_ >= presence_bits.size())
     {
         if (debug)
-            loginf << "parsing optional item '" << name_ << "' bitfield length " << bitfield.size()
-                   << " index " << bitfield_index_ << " out of fspec size" << logendl;
+            loginf << "parsing optional item '" << name_ << "' bitfield length "
+                   << presence_bits.size() << " index " << bitfield_index_
+                   << " out of fspec size" << logendl;
         return 0;
     }
 
-    if (debug && !bitfield.at(bitfield_index_).is_boolean())
-        throw runtime_error("parsing optional item '" + name_ + "' with non-boolean bitfield '" +
-                            bitfield_name_ + "' value");
-
     if (debug)
-        loginf << "parsing optional item '" << name_ << "' bitfield length " << bitfield.size()
-               << " index " << bitfield_index_ << logendl;
+        loginf << "parsing optional item '" << name_ << "' bitfield length "
+               << presence_bits.size() << " index " << bitfield_index_ << logendl;
 
-    bool item_exists = bitfield.at(bitfield_index_);
-
-    if (!item_exists)
+    if (!presence_bits[bitfield_index_])
         return 0;
 
     // item exists — parse sub-items
@@ -123,20 +114,22 @@ size_t OptionalItemParser::parseItem(const char* data, size_t index, size_t size
 size_t OptionalItemParser::encodeItem(const nlohmann::json& source, char* target,
                                       size_t max_size, bool debug)
 {
+    // Fallback path — should not be called in normal compound encoding flow
+    throw runtime_error("OptionalItemParser '" + name_ +
+                        "' encodeItem called without presence_bits");
+}
+
+size_t OptionalItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                      size_t max_size, bool debug,
+                                      const std::vector<bool>& presence_bits)
+{
     if (debug)
         loginf << "encoding optional item '" << name_ << "'" << logendl;
 
-    if (!source.contains(bitfield_name_))
+    if (bitfield_index_ >= presence_bits.size())
         return 0;
 
-    const json& bitfield = source.at(bitfield_name_);
-
-    if (bitfield_index_ >= bitfield.size())
-        return 0;
-
-    bool item_exists = bitfield.at(bitfield_index_).get<bool>();
-
-    if (!item_exists)
+    if (!presence_bits[bitfield_index_])
         return 0;
 
     if (!source.contains(name_))
