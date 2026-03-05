@@ -240,6 +240,13 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
 
         parsed_bytes += item_parser->parseItem(data, index + parsed_bytes, size,
                                                parsed_bytes, total_size, target, debug);
+
+        if (parsed_bytes > size)
+        {
+            logerr << "record '" << name_ << "' parsed size (" << parsed_bytes
+                   << ") overrun data block size (" << size << ")" << logendl;
+            break;
+        }
     }
 
     if (has_conditional_uap_)
@@ -310,6 +317,13 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
 
             parsed_bytes += item_parser->parseItem(
                 data, index + parsed_bytes, size, parsed_bytes, total_size, target, debug);
+
+            if (parsed_bytes > size)
+            {
+                logerr << "record '" << name_ << "' parsed size (" << parsed_bytes
+                       << ") overrun data block size (" << size << ")" << logendl;
+                break;
+            }
         }
     }
 

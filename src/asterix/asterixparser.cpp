@@ -429,6 +429,14 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
 
                 data_block_parsed_bytes += record_parsed_bytes;
 
+                if (data_block_parsed_bytes > data_block_length)
+                {
+                    logerr << "ASTERIXParser: cat " << cat
+                           << " record size (" << data_block_parsed_bytes
+                           << ") overrun data block size (" << data_block_length << ")";
+                    break;
+                }
+
                 ++num_records;
             }
         }
@@ -450,11 +458,11 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
             {
                 data_block_content.at("records").back()["error"] = true; // set error flag
 
-                record_json = limitJsonDump(data_block_content.at("records").back());
+                record_json = limitJsonDump(data_block_content.at("records").back(), 200);
             }
 
             logerr << "asterix parser decoding of cat " << cat << " failed with exception: '"
-                   << e.what() << "'"
+                   << e.what()
                    << "' after index " << data_block_index + data_block_parsed_bytes
                    << " data block " << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
                    << (record_json.size() ? " record json '" + record_json + "'" : "")
@@ -465,10 +473,16 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
 
         if (data_block_parsed_bytes != data_block_length)
         {
-            logerr << "ASTERIXParser: data block cat " << cat << ": parsed "
-                   << data_block_parsed_bytes << " bytes but block content length is "
-                   << data_block_length << " (" << (data_block_length - data_block_parsed_bytes)
-                   << " bytes unparsed)" << logendl;
+            if (data_block_parsed_bytes > data_block_length)
+                logerr << "ASTERIXParser: data block cat " << cat << ": parsed "
+                       << data_block_parsed_bytes << " bytes but block content length is "
+                       << data_block_length << logendl;
+            else
+                logerr << "ASTERIXParser: data block cat " << cat << ": parsed "
+                       << data_block_parsed_bytes << " bytes but block content length is "
+                       << data_block_length << " ("
+                       << (data_block_length - data_block_parsed_bytes)
+                       << " bytes unparsed)" << logendl;
         }
     }
     else if (debug)
