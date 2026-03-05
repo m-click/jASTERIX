@@ -68,33 +68,68 @@ size_t ExtendableItemParser::parseItem(const char* data, size_t index, size_t si
     unsigned int extend = 1;
     unsigned int cnt = 0;
 
-    json& j_data = target[name_] = json::array();
-
-    while (extend)
+    if (column_target_)
     {
-        if (index + parsed_bytes >= total_size)
-            throw runtime_error("ExtendableItemParser '" + name_ + "': at index " +
-                to_string(index + parsed_bytes) + " exceeds total_size " + to_string(total_size));
+        json arr = json::array();
 
-        for (auto& data_item_it : items_)
+        while (extend)
         {
-            if (debug)
-                loginf << "parsing extendable item '" << name_ << "' data item '"
-                       << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
-                       << cnt << logendl;
+            if (index + parsed_bytes >= total_size)
+                throw runtime_error("ExtendableItemParser '" + name_ + "': at index " +
+                    to_string(index + parsed_bytes) + " exceeds total_size " + to_string(total_size));
 
-            json& current = j_data[cnt];
-            parsed_bytes += data_item_it->parseItem(
-                        data, index + parsed_bytes, size, parsed_bytes, total_size, current, debug);
+            json elem = json::object();
+            for (auto& data_item_it : items_)
+            {
+                if (debug)
+                    loginf << "parsing extendable item '" << name_ << "' data item '"
+                           << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
+                           << cnt << logendl;
+
+                parsed_bytes += data_item_it->parseItem(
+                            data, index + parsed_bytes, size, parsed_bytes, total_size, elem, debug);
+            }
+            arr.push_back(std::move(elem));
+
+            extend = static_cast<unsigned char>(data[index + parsed_bytes - 1]) & 0x01;
+
+            if (debug)
+                loginf << "parsing extendable item '" << name_ << "' extend = " << extend << logendl;
+
+            ++cnt;
         }
 
-        // Read extend bit directly from binary — always bit 0 of the last byte parsed
-        extend = static_cast<unsigned char>(data[index + parsed_bytes - 1]) & 0x01;
+        (*column_target_)[*record_index_] = std::move(arr);
+    }
+    else
+    {
+        json& j_data = target[name_] = json::array();
 
-        if (debug)
-            loginf << "parsing extendable item '" << name_ << "' extend = " << extend << logendl;
+        while (extend)
+        {
+            if (index + parsed_bytes >= total_size)
+                throw runtime_error("ExtendableItemParser '" + name_ + "': at index " +
+                    to_string(index + parsed_bytes) + " exceeds total_size " + to_string(total_size));
 
-        ++cnt;
+            for (auto& data_item_it : items_)
+            {
+                if (debug)
+                    loginf << "parsing extendable item '" << name_ << "' data item '"
+                           << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
+                           << cnt << logendl;
+
+                json& current = j_data[cnt];
+                parsed_bytes += data_item_it->parseItem(
+                            data, index + parsed_bytes, size, parsed_bytes, total_size, current, debug);
+            }
+
+            extend = static_cast<unsigned char>(data[index + parsed_bytes - 1]) & 0x01;
+
+            if (debug)
+                loginf << "parsing extendable item '" << name_ << "' extend = " << extend << logendl;
+
+            ++cnt;
+        }
     }
 
     return parsed_bytes;
@@ -133,6 +168,12 @@ void ExtendableItemParser::addInfo (const std::string& edition, CategoryItemInfo
 {
     for (auto& item_it : items_)
         item_it->addInfo(edition, info);
+}
+
+void ExtendableItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    callback(this, long_name_);
+    // Do NOT recurse into children — they write structured into each extension element
 }
 
 }  // namespace jASTERIX

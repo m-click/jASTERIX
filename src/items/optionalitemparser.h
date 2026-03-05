@@ -45,6 +45,8 @@ class OptionalItemParser : public ItemParserBase
 
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const override;
 
+    virtual void setupColumnWriters(const LeafSetupCallback& callback) override;
+
     unsigned int bitfieldIndex() const { return bitfield_index_; }
 
   protected:

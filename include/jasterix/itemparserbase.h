@@ -24,11 +24,20 @@
 #include <cstddef>
 #include <sstream>
 #include <cassert>
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace jASTERIX
 {
+
+class ItemParserBase;
+
+// Callback invoked for each leaf parser during setupColumnWriters.
+// The caller uses it to create column arrays and inject pointers.
+using LeafSetupCallback = std::function<void(ItemParserBase* leaf,
+                                             const std::string& long_name)>;
+
 class ItemParserBase
 {
 public:
@@ -64,12 +73,38 @@ public:
 
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const;
 
+    // Columnar output mode: walk parser tree, call callback for each leaf.
+    // Default impl is a no-op (for parsers like SkipBytes that produce no output).
+    virtual void setupColumnWriters(const LeafSetupCallback& callback);
+
+    // Inject column target for this parser (called by LeafSetupCallback).
+    void setColumnTarget(nlohmann::json* column_array, size_t* record_index);
+
 protected:
+    // Write a parsed value: to column array in columnar mode, or to target in structured mode.
+    // In columnar mode, also writes to target (scratch json) for conditional UAP lookups.
+    template<typename T>
+    void writeValue(nlohmann::json& target, T&& value)
+    {
+        if (column_target_)
+        {
+            target.emplace(name_, value);  // copy to scratch for conditional UAP
+            (*column_target_)[*record_index_] = std::forward<T>(value);
+        }
+        else
+            target.emplace(name_, std::forward<T>(value));
+    }
+
     const nlohmann::json& item_definition_;
     std::string name_;
     std::string long_name_prefix_;
     std::string long_name_;
     std::string type_;
+
+    // Columnar output mode members
+    nlohmann::json* column_target_ = nullptr;  // pointer to this leaf's column array
+    size_t* record_index_ = nullptr;           // shared pointer to current record counter
+    bool column_mode_ = false;                 // true when columnar mode is active (set on containers)
 };
 
 bool variableHasValue(const nlohmann::json& data,

@@ -40,6 +40,8 @@ class Edition : public EditionBase
 
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) override;
 
+    void setupColumnWriters(const LeafSetupCallback& callback);
+
   protected:
     std::shared_ptr<Record> record_;
 };

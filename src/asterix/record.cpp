@@ -515,20 +515,37 @@ std::string Record::getValue(const nlohmann::json& container, bool debug)
 {
     const nlohmann::json* val_ptr = &container;
 
-    for (const std::string& sub_key : conditional_uaps_sub_keys_)
+    if (column_mode_)
     {
-        if (debug)
-            loginf << "Record: getValue: sub_key '" << sub_key << "' json '" << val_ptr->dump(4) << "'" << logendl;
+        // In column mode, containers skip nesting — leaves write flat to target.
+        // Look up the last sub-key directly (the leaf name).
+        const auto& leaf_key = conditional_uaps_sub_keys_.back();
 
-        if (!val_ptr->contains(sub_key))
+        if (debug)
+            loginf << "Record: getValue (column_mode): leaf_key '" << leaf_key << "'" << logendl;
+
+        if (!container.contains(leaf_key))
+            return "";
+
+        val_ptr = &container.at(leaf_key);
+    }
+    else
+    {
+        for (const std::string& sub_key : conditional_uaps_sub_keys_)
         {
             if (debug)
-                loginf << "Record: getValue: sub_key '" << sub_key << "' not found" << logendl;
+                loginf << "Record: getValue: sub_key '" << sub_key << "' json '" << val_ptr->dump(4) << "'" << logendl;
 
-            return "";
+            if (!val_ptr->contains(sub_key))
+            {
+                if (debug)
+                    loginf << "Record: getValue: sub_key '" << sub_key << "' not found" << logendl;
+
+                return "";
+            }
+
+            val_ptr = &(*val_ptr)[sub_key];
         }
-
-        val_ptr = &(*val_ptr)[sub_key];
     }
 
     std::string json_value;
@@ -791,6 +808,15 @@ void Record::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : items_)
         item_it.second->addInfo(edition, info);
+}
+
+void Record::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    column_mode_ = true;
+
+    // Walk all items (covers both base UAP and conditional UAP entries)
+    for (auto& [name, item] : items_)
+        item->setupColumnWriters(callback);
 }
 
 // bool Record::compareKey (const nlohmann::json& container, const std::string& value)

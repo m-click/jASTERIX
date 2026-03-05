@@ -40,6 +40,8 @@ class ExtendableItemParser : public ItemParserBase
 
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const override;
 
+    virtual void setupColumnWriters(const LeafSetupCallback& callback) override;
+
   protected:
     std::vector<std::unique_ptr<ItemParserBase>> items_;
 };

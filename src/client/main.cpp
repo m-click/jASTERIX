@@ -98,6 +98,8 @@ int main(int argc, char** argv)
     std::string write_filename;
     bool log_performance{false};
 
+    bool flat{false};
+
     bool analyze{false};
     bool analyze_csv{false};
     unsigned int analyze_record_limit {0};
@@ -138,6 +140,8 @@ int main(int argc, char** argv)
                 "add and check ARTAS MD5 hashes (with record data), stating which categories to check, "
                 "e.g. 1,20,21,48")
         #endif
+            ("flat", po::bool_switch(&flat),
+             "output in flat/columnar format (cat -> leaf_name -> array)")
             ("add_record_data", po::bool_switch(&jASTERIX::add_record_data),
              "add original record data in hex")("print", po::bool_switch(&print),
                                                 "print JSON output")(
@@ -349,32 +353,32 @@ int main(int argc, char** argv)
             if (framing == "netto" || framing == "")
             {
                 if (json_writer)
-                    asterix.decodeFile(filename, write_callback);
+                    asterix.decodeFile(filename, write_callback, flat);
                 else  // printing done via flag
 #if USE_OPENSSL
                     if (check_artas_md5_hash.size())
-                        asterix.decodeFile(filename, check_callback);
+                        asterix.decodeFile(filename, check_callback, flat);
                     else
-                        asterix.decodeFile(filename, empty_callback);
+                        asterix.decodeFile(filename, empty_callback, flat);
 
 #else
-                    asterix.decodeFile(filename, empty_callback);
+                    asterix.decodeFile(filename, empty_callback, flat);
 #endif
             }
             else
             {
                 if (json_writer)
-                    asterix.decodeFile(filename, framing, write_callback);
+                    asterix.decodeFile(filename, framing, write_callback, flat);
                 else  // printing done via flag
                 {
 #if USE_OPENSSL
                     if (check_artas_md5_hash.size())
-                        asterix.decodeFile(filename, framing, check_callback);
+                        asterix.decodeFile(filename, framing, check_callback, flat);
                     else
-                        asterix.decodeFile(filename, framing, empty_callback);
+                        asterix.decodeFile(filename, framing, empty_callback, flat);
 
 #else
-                    asterix.decodeFile(filename, framing, empty_callback);
+                    asterix.decodeFile(filename, framing, empty_callback, flat);
 #endif
                 }
             }

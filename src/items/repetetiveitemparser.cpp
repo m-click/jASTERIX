@@ -70,22 +70,45 @@ size_t RepetetiveItemParser::parseItem(const char* data, size_t index, size_t si
     unsigned int rep = static_cast<unsigned char>(data[index]);
     size_t parsed_bytes = 1;  // consume the REP byte
 
-    json& j_data = target[name_] = json::array();
-
     if (debug)
         loginf << "parsing repetitive item '" + name_ + "' items " << rep << " times" << logendl;
 
-    for (unsigned int cnt = 0; cnt < rep; ++cnt)
+    if (column_target_)
     {
-        for (auto& data_item_it : items_)
+        json arr = json::array();
+        for (unsigned int cnt = 0; cnt < rep; ++cnt)
         {
-            if (debug)
-                loginf << "parsing repetitive item '" << name_ << "' data item '"
-                       << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
-                       << cnt << logendl;
+            json elem = json::object();
+            for (auto& data_item_it : items_)
+            {
+                if (debug)
+                    loginf << "parsing repetitive item '" << name_ << "' data item '"
+                           << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
+                           << cnt << logendl;
 
-            parsed_bytes += data_item_it->parseItem(
-                        data, index + parsed_bytes, size, parsed_bytes, total_size, j_data[cnt], debug);
+                parsed_bytes += data_item_it->parseItem(
+                            data, index + parsed_bytes, size, parsed_bytes, total_size, elem, debug);
+            }
+            arr.push_back(std::move(elem));
+        }
+        (*column_target_)[*record_index_] = std::move(arr);
+    }
+    else
+    {
+        json& j_data = target[name_] = json::array();
+
+        for (unsigned int cnt = 0; cnt < rep; ++cnt)
+        {
+            for (auto& data_item_it : items_)
+            {
+                if (debug)
+                    loginf << "parsing repetitive item '" << name_ << "' data item '"
+                           << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
+                           << cnt << logendl;
+
+                parsed_bytes += data_item_it->parseItem(
+                            data, index + parsed_bytes, size, parsed_bytes, total_size, j_data[cnt], debug);
+            }
         }
     }
 
@@ -123,6 +146,12 @@ void RepetetiveItemParser::addInfo (const std::string& edition, CategoryItemInfo
 {
     for (auto& item_it : items_)
         item_it->addInfo(edition, info);
+}
+
+void RepetetiveItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    callback(this, long_name_);
+    // Do NOT recurse into children — they write structured into each repetition element
 }
 
 }  // namespace jASTERIX

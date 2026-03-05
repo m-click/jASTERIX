@@ -87,13 +87,17 @@ class jASTERIX
     std::string analyzeDataCSV(const char* data, unsigned int total_size,
                                                 unsigned int record_limit=0);
 
+    // do_flat=false: callback receives {"frames":[...]} or {"data_blocks":[...]} with nested per-record objects.
+    // do_flat=true:  callback receives {"<cat>": {"<item>.<field>": [val_per_record, ...], ...}, ...} per chunk.
+    //                Forces single-thread mode. Column arrays are moved out each chunk; fresh arrays created for next.
     void decodeFile(const std::string& filename, const std::string& framing_str,
                     std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)>
-                        data_callback = nullptr);
-    // callback gets moved chunk, accumulated number of frames, number of records, number of errors
+                        data_callback = nullptr,
+                    bool do_flat = false);
     void decodeFile(const std::string& filename,
                     std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)>
-                        data_callback = nullptr);
+                        data_callback = nullptr,
+                    bool do_flat = false);
     void stopDecoding();
 
     void decodeData(const char* data, unsigned int total_size,
@@ -161,6 +165,10 @@ class jASTERIX
 
     std::atomic<bool> stop_decoding_{false};
 
+    // Flat/columnar mode state
+    std::map<unsigned int, nlohmann::json> flat_data_;       // cat -> {leaf_name -> json::array}
+    std::map<unsigned int, size_t> flat_record_indices_;     // cat -> current record index
+
     // sac/sic -> cat -> count
     //std::map<std::string, std::map<std::string, unsigned int>> sensor_counts_;
 
@@ -179,6 +187,9 @@ class jASTERIX
     void clearDataBlockChunks();
 
     std::string toCSV (const std::map<std::string, std::map<std::string, std::map<std::string, nlohmann::json>>>& data_item_analysis);
+
+    void setupFlatColumns();
+    std::unique_ptr<nlohmann::json> moveFlatData();
 
     void forceStopTask (DataBlockFinderTask& task);
     void forceStopTask (FrameParserTask& task);

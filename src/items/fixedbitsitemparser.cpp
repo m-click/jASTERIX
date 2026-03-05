@@ -342,9 +342,9 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                        << " length " << bit_length_ << " value " << (size_t)tmp1 << logendl;
 
             if (has_lsb_)
-                target.emplace(name_, lsb_ * tmp1);
+                writeValue(target,lsb_ * tmp1);
             else
-                target.emplace(name_, tmp1);
+                writeValue(target,tmp1);
             break;
         }
         case DataType::Int:
@@ -370,10 +370,10 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                         << " length " << bit_length_ << " value " << (size_t)tmp1 << " parsed "
                         << data_int << logendl;
 
-                target.emplace(name_, lsb_ * data_int);
+                writeValue(target,lsb_ * data_int);
             }
             else
-                target.emplace(name_, data_int);
+                writeValue(target,data_int);
             break;
         }
         case DataType::Digits:
@@ -393,7 +393,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                            << " digits1 tmp " << digits_tmp << " value " << (size_t)tmp1
                            << " bitmask " << digits_bitmasks1[cnt] << logendl;
             }
-            target.emplace(name_, digits_tmp);
+            writeValue(target,digits_tmp);
             break;
         }
         case DataType::IcaoCharacters:
@@ -419,7 +419,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                            << " cnt " << cnt << " characters tmp '" << characters_tmp << "' value "
                            << (size_t)char_tmp1 << " bitmask " << chars_bitmasks1[cnt] << logendl;
             }
-            target.emplace(name_, std::move(characters_tmp));
+            writeValue(target,std::move(characters_tmp));
             break;
         }
         }
@@ -450,9 +450,9 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                        << " length " << bit_length_ << " value " << (size_t)tmp4;
 
             if (has_lsb_)
-                target.emplace(name_, lsb_ * tmp4);
+                writeValue(target,lsb_ * tmp4);
             else
-                target.emplace(name_, tmp4);
+                writeValue(target,tmp4);
             break;
         }
         case DataType::Int:
@@ -488,10 +488,10 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                     loginf << "parsing fixed bits item '" << name_ << "' with start bit "
                            << start_bit_ << " length " << bit_length_ << " final value "
                            << lsb_ * data_int << logendl;
-                target.emplace(name_, lsb_ * data_int);
+                writeValue(target,lsb_ * data_int);
             }
             else
-                target.emplace(name_, data_int);
+                writeValue(target,data_int);
             break;
         }
         case DataType::Digits:
@@ -511,7 +511,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                            << " digits4 tmp " << digits_tmp << " value " << (size_t)tmp4
                            << " bitmask " << digits_bitmasks4[cnt] << logendl;
             }
-            target.emplace(name_, digits_tmp);
+            writeValue(target,digits_tmp);
             break;
         }
         case DataType::IcaoCharacters:
@@ -537,7 +537,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                            << cnt << " characters tmp '" << characters_tmp << "' value "
                            << (size_t)char_tmp4 << " bitmask " << chars_bitmasks4[cnt] << logendl;
             }
-            target.emplace(name_, std::move(characters_tmp));
+            writeValue(target,std::move(characters_tmp));
             break;
         }
         }
@@ -568,9 +568,9 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                        << " length " << bit_length_ << " value " << (size_t)tmp8 << logendl;
 
             if (has_lsb_)
-                target.emplace(name_, lsb_ * tmp8);
+                writeValue(target,lsb_ * tmp8);
             else
-                target.emplace(name_, tmp8);
+                writeValue(target,tmp8);
             break;
         }
         case DataType::Int:
@@ -590,9 +590,9 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                 data_lint = tmp8;
 
             if (has_lsb_)
-                target.emplace(name_, lsb_ * data_lint);
+                writeValue(target,lsb_ * data_lint);
             else
-                target.emplace(name_, data_lint);
+                writeValue(target,data_lint);
             break;
         }
         case DataType::Digits:
@@ -609,7 +609,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                 digits_tmp *= 10;
                 digits_tmp += tmp8 & digits_bitmasks8[cnt];
             }
-            target.emplace(name_, digits_tmp);
+            writeValue(target,digits_tmp);
             break;
         }
         case DataType::IcaoCharacters:
@@ -635,7 +635,7 @@ size_t FixedBitsItemParser::parseItem(const char* data, size_t index, size_t siz
                            << cnt << " characters tmp '" << characters_tmp << "' value "
                            << (size_t)char_tmp8 << " bitmask " << chars_bitmasks8[cnt] << logendl;
             }
-            target.emplace(name_, std::move(characters_tmp));
+            writeValue(target,std::move(characters_tmp));
             break;
         }
         }
@@ -840,6 +840,12 @@ size_t FixedBitsItemParser::encodeItem(const nlohmann::json& source, char* targe
     }
 
     return 0;  // FixedBits does not advance byte offset
+}
+
+void FixedBitsItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    if (!no_output_)
+        callback(this, long_name_);
 }
 
 }  // namespace jASTERIX

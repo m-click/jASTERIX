@@ -35,6 +35,8 @@ class DynamicBytesItemParser : public ItemParserBase
     virtual size_t encodeItem(const nlohmann::json& source, char* target,
                               size_t max_size, bool debug) override;
 
+    virtual void setupColumnWriters(const LeafSetupCallback& callback) override;
+
   protected:
     std::string length_variable_name_;
     bool substract_previous_{false};

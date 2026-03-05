@@ -40,6 +40,8 @@ class FixedBitFieldItemParser : public ItemParserBase
 
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const override;
 
+    virtual void setupColumnWriters(const LeafSetupCallback& callback) override;
+
   protected:
     bool optional_{false};
     std::string optional_variable_name_;

@@ -185,4 +185,11 @@ void FixedBitFieldItemParser::addInfo (const std::string& edition, CategoryItemI
         item_it->addInfo(edition, info);
 }
 
+void FixedBitFieldItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    column_mode_ = true;
+    for (auto& sub_item_it : items_)
+        sub_item_it->setupColumnWriters(callback);
+}
+
 }  // namespace jASTERIX

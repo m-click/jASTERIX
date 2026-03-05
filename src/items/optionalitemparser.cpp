@@ -97,11 +97,22 @@ size_t OptionalItemParser::parseItem(const char* data, size_t index, size_t size
     if (debug)
         loginf << "parsing optional item '" + name_ + "' sub-items";
 
-    json& opt_target = target[name_];
-    for (auto& df_item : data_fields_)
+    if (column_mode_)
     {
-        parsed_bytes += df_item->parseItem(
-                    data, index + parsed_bytes, size, current_parsed_bytes, total_size, opt_target, debug);
+        for (auto& df_item : data_fields_)
+        {
+            parsed_bytes += df_item->parseItem(
+                        data, index + parsed_bytes, size, current_parsed_bytes, total_size, target, debug);
+        }
+    }
+    else
+    {
+        json& opt_target = target[name_];
+        for (auto& df_item : data_fields_)
+        {
+            parsed_bytes += df_item->parseItem(
+                        data, index + parsed_bytes, size, current_parsed_bytes, total_size, opt_target, debug);
+        }
     }
 
     if (debug)
@@ -151,6 +162,13 @@ void OptionalItemParser::addInfo (const std::string& edition, CategoryItemInfo& 
 {
     for (auto& item_it : data_fields_)
         item_it->addInfo(edition, info);
+}
+
+void OptionalItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    column_mode_ = true;
+    for (auto& df_item : data_fields_)
+        df_item->setupColumnWriters(callback);
 }
 
 }  // namespace jASTERIX

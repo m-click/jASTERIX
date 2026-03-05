@@ -38,6 +38,8 @@ class ItemParser : public ItemParserBase
 
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const override;
 
+    virtual void setupColumnWriters(const LeafSetupCallback& callback) override;
+
 protected:
     std::string number_;
     std::vector<std::unique_ptr<ItemParserBase>> data_fields_;

@@ -50,11 +50,15 @@ class ASTERIXParser
     //    nlohmann::json& target,
     //                            bool debug);
 
+    void setFlatRecordIndices(std::map<unsigned int, size_t>* indices);
+
   private:
     std::string data_block_name_;
     std::vector<std::unique_ptr<ItemParserBase>> data_block_items_;
     std::map<unsigned int, std::shared_ptr<Record>> records_;
     std::map<unsigned int, std::shared_ptr<Mapping>> mappings_;
+
+    std::map<unsigned int, size_t>* flat_record_indices_{nullptr};
 
 #if USE_OPENSSL
     void calculateARTASMD5Hash(const char* data, size_t length, nlohmann::json& target);

@@ -40,6 +40,8 @@ class CompoundItemParser : public ItemParserBase
 
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const override;
 
+    virtual void setupColumnWriters(const LeafSetupCallback& callback) override;
+
   protected:
     // std::string field_specification_name_;
     std::unique_ptr<ItemParserBase> field_specification_;

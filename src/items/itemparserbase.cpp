@@ -150,6 +150,18 @@ std::string ItemParserBase::longNamePrefix() const
     return long_name_prefix_;
 }
 
+void ItemParserBase::setupColumnWriters(const LeafSetupCallback& /*callback*/)
+{
+    // Default no-op: parsers that produce no output (e.g. SkipBytes) do nothing.
+    // Leaf and container parsers override this.
+}
+
+void ItemParserBase::setColumnTarget(nlohmann::json* column_array, size_t* record_index)
+{
+    column_target_ = column_array;
+    record_index_ = record_index;
+}
+
 // size_t parseFixedBitsItem (const std::string& name, const std::string& type, const
 // nlohmann::json& item_definition,
 //                           const char* data, size_t index, size_t size, size_t

@@ -41,4 +41,10 @@ void Edition::addInfo (const std::string& edition, CategoryItemInfo& info)
     record_->addInfo(edition, info);
 }
 
+void Edition::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    traced_assert(record_);
+    record_->setupColumnWriters(callback);
+}
+
 }  // namespace jASTERIX

@@ -36,6 +36,8 @@ class FixedBytesItemParser : public ItemParserBase
     virtual size_t encodeItem(const nlohmann::json& source, char* target,
                               size_t max_size, bool debug) override;
 
+    virtual void setupColumnWriters(const LeafSetupCallback& callback) override;
+
   protected:
     size_t length_{0};
     std::string data_type_;

@@ -190,4 +190,11 @@ void CompoundItemParser::addInfo (const std::string& edition, CategoryItemInfo& 
         item_it->addInfo(edition, info);
 }
 
+void CompoundItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    column_mode_ = true;
+    for (auto& item_it : items_)
+        item_it->setupColumnWriters(callback);
+}
+
 }  // namespace jASTERIX

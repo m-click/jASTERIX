@@ -17,7 +17,6 @@
 
 #include "asterixparser.h"
 
-#include <tbb/tbb.h>
 
 #include <iomanip>
 #include <iostream>
@@ -230,6 +229,11 @@ std::tuple<size_t, size_t, bool, bool> ASTERIXParser::findDataBlocks(
                                hit_data_block_limit ? true : !hit_data_block_chunk_limit);
 }
 
+void ASTERIXParser::setFlatRecordIndices(std::map<unsigned int, size_t>* indices)
+{
+    flat_record_indices_ = indices;
+}
+
 std::pair<size_t, size_t> ASTERIXParser::decodeDataBlocks(const char* data, size_t total_size,
                                                           nlohmann::json& data_blocks, bool debug)
 {
@@ -246,17 +250,8 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlocks(const char* data, size
     std::vector<std::pair<size_t, size_t>> num_records;
     num_records.resize(num_data_blocks, {0, 0});
 
-    if (debug || single_thread)  // switch to single thread in debug
-    {
-        for (size_t cnt = 0; cnt < num_data_blocks; ++cnt)
-            num_records.at(cnt) = decodeDataBlock(data, total_size, data_blocks[cnt], debug);
-    }
-    else
-    {
-        tbb::parallel_for(size_t(0), num_data_blocks, [&](size_t cnt) {
-            num_records.at(cnt) = decodeDataBlock(data, total_size, data_blocks[cnt], debug);
-        });
-    }
+    for (size_t cnt = 0; cnt < num_data_blocks; ++cnt)
+        num_records.at(cnt) = decodeDataBlock(data, total_size, data_blocks[cnt], debug);
 
     //    for (auto num_record_it : num_records)
     //    {
@@ -367,108 +362,160 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
         size_t data_block_parsed_bytes{0};
         size_t record_parsed_bytes{0};
 
-        try
+        if (flat_record_indices_ && flat_record_indices_->count(cat))
         {
-            // decode
-            if (debug)
-                loginf << "asterix parser decoding record with cat " << cat << " index "
-                       << data_block_index << " length " << data_block_length << logendl;
-
-            data_block_content.emplace("records", json::array());
-            json& records = data_block_content.at("records");
-
-            // create records until end of content
-            while (data_block_parsed_bytes < data_block_length)
+            // flat/columnar mode — no records array, leaves write to column arrays
+            try
             {
-                // loginf << "asterix parser decoding record " << cnt << " parsed bytes " <<
-                // parsed_bytes_record
-                // << " length " << record_length;
-
-                if (data_block_index + data_block_parsed_bytes >= total_size)
-                {
-                    logerr << "unexpected data block item at index "
-                           << data_block_index + data_block_parsed_bytes
-                           << " total_size " << total_size << ", quitting";
-                    break;
-                }
-
-                json& current_record = records[num_records];
-
-                record_parsed_bytes =
-                    records_.at(cat)->parseItem(
-                            data, data_block_index + data_block_parsed_bytes,
-                            data_block_length - data_block_parsed_bytes,
-                            data_block_parsed_bytes, total_size, current_record, debug);
-
                 if (debug)
-                    loginf << "record with cat " << cat << " index "
-                           << data_block_index + data_block_parsed_bytes << " length "
-                           << record_parsed_bytes << " data '"
-                           << binary2hex((const unsigned char*)&data[data_block_index +
-                                                                     data_block_parsed_bytes],
-                                         record_parsed_bytes)
-                           << "'" << logendl;
+                    loginf << "asterix parser decoding flat record with cat " << cat << " index "
+                           << data_block_index << " length " << data_block_length << logendl;
 
-                if (debug)
-                    loginf << "asterix parser decoding record with cat " << cat << " index "
-                           << data_block_index << ": " << current_record.dump(4) << "'"
-                           << logendl;
+                json record_scratch;
 
-#if USE_OPENSSL
-                if (add_artas_md5_hash)
-                    calculateARTASMD5Hash(&data[data_block_index + data_block_parsed_bytes],
-                                          record_parsed_bytes, current_record);
-#endif
-                if (add_record_data)
-                    current_record["record_data"] = binary2hex(
-                        (const unsigned char*)&data[data_block_index + data_block_parsed_bytes],
-                        record_parsed_bytes);
-
-                current_record["index"] = data_block_index + data_block_parsed_bytes;
-                current_record["length"] = record_parsed_bytes;
-
-                data_block_parsed_bytes += record_parsed_bytes;
-
-                if (data_block_parsed_bytes > data_block_length)
+                while (data_block_parsed_bytes < data_block_length)
                 {
-                    logerr << "ASTERIXParser: cat " << cat
-                           << " record size (" << data_block_parsed_bytes
-                           << ") overrun data block size (" << data_block_length << ")";
-                    break;
-                }
+                    if (data_block_index + data_block_parsed_bytes >= total_size)
+                    {
+                        logerr << "unexpected data block item at index "
+                               << data_block_index + data_block_parsed_bytes
+                               << " total_size " << total_size << ", quitting";
+                        break;
+                    }
 
-                ++num_records;
+                    record_scratch.clear();
+
+                    record_parsed_bytes =
+                        records_.at(cat)->parseItem(
+                                data, data_block_index + data_block_parsed_bytes,
+                                data_block_length - data_block_parsed_bytes,
+                                data_block_parsed_bytes, total_size, record_scratch, debug);
+
+                    data_block_parsed_bytes += record_parsed_bytes;
+
+                    if (data_block_parsed_bytes > data_block_length)
+                    {
+                        logerr << "ASTERIXParser: cat " << cat
+                               << " record size (" << data_block_parsed_bytes
+                               << ") overrun data block size (" << data_block_length << ")";
+                        break;
+                    }
+
+                    ++flat_record_indices_->at(cat);
+                    ++num_records;
+                }
+            }
+            catch (std::exception& e)
+            {
+                logerr << "asterix parser decoding flat of cat " << cat << " failed with exception: '"
+                       << e.what()
+                       << "' after index " << data_block_index + data_block_parsed_bytes
+                       << " data block " << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
+                       << logendl;
+
+                ++num_errors;
             }
         }
-        catch (std::exception& e)
+        else
         {
-            std::string record_json;
-
-            auto limitJsonDump = [](const nlohmann::json& json_obj, size_t max_len = 500) -> std::string
+            // structured mode — current behavior
+            try
             {
-                std::string result = json_obj.dump(-1);  // -1 = compact format
-                if (result.length() > max_len)
+                if (debug)
+                    loginf << "asterix parser decoding record with cat " << cat << " index "
+                           << data_block_index << " length " << data_block_length << logendl;
+
+                data_block_content.emplace("records", json::array());
+                json& records = data_block_content.at("records");
+
+                while (data_block_parsed_bytes < data_block_length)
                 {
-                    result = result.substr(0, max_len - 3) + "...";
+                    if (data_block_index + data_block_parsed_bytes >= total_size)
+                    {
+                        logerr << "unexpected data block item at index "
+                               << data_block_index + data_block_parsed_bytes
+                               << " total_size " << total_size << ", quitting";
+                        break;
+                    }
+
+                    json& current_record = records[num_records];
+
+                    record_parsed_bytes =
+                        records_.at(cat)->parseItem(
+                                data, data_block_index + data_block_parsed_bytes,
+                                data_block_length - data_block_parsed_bytes,
+                                data_block_parsed_bytes, total_size, current_record, debug);
+
+                    if (debug)
+                        loginf << "record with cat " << cat << " index "
+                               << data_block_index + data_block_parsed_bytes << " length "
+                               << record_parsed_bytes << " data '"
+                               << binary2hex((const unsigned char*)&data[data_block_index +
+                                                                         data_block_parsed_bytes],
+                                             record_parsed_bytes)
+                               << "'" << logendl;
+
+                    if (debug)
+                        loginf << "asterix parser decoding record with cat " << cat << " index "
+                               << data_block_index << ": " << current_record.dump(4) << "'"
+                               << logendl;
+
+#if USE_OPENSSL
+                    if (add_artas_md5_hash)
+                        calculateARTASMD5Hash(&data[data_block_index + data_block_parsed_bytes],
+                                              record_parsed_bytes, current_record);
+#endif
+                    if (add_record_data)
+                        current_record["record_data"] = binary2hex(
+                            (const unsigned char*)&data[data_block_index + data_block_parsed_bytes],
+                            record_parsed_bytes);
+
+                    current_record["index"] = data_block_index + data_block_parsed_bytes;
+                    current_record["length"] = record_parsed_bytes;
+
+                    data_block_parsed_bytes += record_parsed_bytes;
+
+                    if (data_block_parsed_bytes > data_block_length)
+                    {
+                        logerr << "ASTERIXParser: cat " << cat
+                               << " record size (" << data_block_parsed_bytes
+                               << ") overrun data block size (" << data_block_length << ")";
+                        break;
+                    }
+
+                    ++num_records;
                 }
-                return result;
-            };
-
-            if (data_block_content.contains("records") && data_block_content.at("records").size())
-            {
-                data_block_content.at("records").back()["error"] = true; // set error flag
-
-                record_json = limitJsonDump(data_block_content.at("records").back(), 200);
             }
+            catch (std::exception& e)
+            {
+                std::string record_json;
 
-            logerr << "asterix parser decoding of cat " << cat << " failed with exception: '"
-                   << e.what()
-                   << "' after index " << data_block_index + data_block_parsed_bytes
-                   << " data block " << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
-                   << (record_json.size() ? " record json '" + record_json + "'" : "")
-                   << logendl;
+                auto limitJsonDump = [](const nlohmann::json& json_obj, size_t max_len = 500) -> std::string
+                {
+                    std::string result = json_obj.dump(-1);
+                    if (result.length() > max_len)
+                    {
+                        result = result.substr(0, max_len - 3) + "...";
+                    }
+                    return result;
+                };
 
-            ++num_errors;
+                if (data_block_content.contains("records") && data_block_content.at("records").size())
+                {
+                    data_block_content.at("records").back()["error"] = true;
+
+                    record_json = limitJsonDump(data_block_content.at("records").back(), 200);
+                }
+
+                logerr << "asterix parser decoding of cat " << cat << " failed with exception: '"
+                       << e.what()
+                       << "' after index " << data_block_index + data_block_parsed_bytes
+                       << " data block " << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
+                       << (record_json.size() ? " record json '" + record_json + "'" : "")
+                       << logendl;
+
+                ++num_errors;
+            }
         }
 
         if (data_block_parsed_bytes != data_block_length)
@@ -490,7 +537,7 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
                << " length " << data_block_length << " skipped since cat definition is missing "
                << logendl;
 
-    if (num_records && mappings_.count(cat))
+    if (num_records && !flat_record_indices_ && mappings_.count(cat))
     {
         if (debug)
             loginf << "asterix parser decoding mapping cat " << cat << ", num records " << num_records

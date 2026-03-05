@@ -347,4 +347,10 @@ CategoryItemInfo Category::itemInfo () const
     return info;
 }
 
+void Category::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    traced_assert(hasEdition(current_edition_));
+    editions_.at(current_edition_)->setupColumnWriters(callback);
+}
+
 }  // namespace jASTERIX

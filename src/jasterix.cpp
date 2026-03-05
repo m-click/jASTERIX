@@ -627,10 +627,41 @@ std::string jASTERIX::analyzeDataCSV(const char* data, unsigned int total_size,
     return ss.str();
 }
 
+void jASTERIX::setupFlatColumns()
+{
+    flat_data_.clear();
+
+    for (auto& [cat, cat_def] : category_definitions_)
+    {
+        if (cat_def->decode())
+        {
+            flat_record_indices_[cat] = 0;
+            cat_def->setupColumnWriters([this, cat](ItemParserBase* leaf, const std::string& name) {
+                flat_data_[cat][name] = nlohmann::json::array();
+                leaf->setColumnTarget(&flat_data_[cat][name], &flat_record_indices_[cat]);
+            });
+        }
+    }
+}
+
+std::unique_ptr<nlohmann::json> jASTERIX::moveFlatData()
+{
+    auto result = std::make_unique<nlohmann::json>();
+    for (auto& [cat, cat_data] : flat_data_)
+        (*result)[std::to_string(cat)] = std::move(cat_data);
+
+    setupFlatColumns();  // re-create fresh arrays and re-inject pointers
+
+    return result;
+}
+
 void jASTERIX::decodeFile(
     const std::string& filename, const std::string& framing_str,
-    std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)> data_callback)
+    std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)> data_callback,
+    bool do_flat)
 {
+    if (do_flat)
+        single_thread = true;
 
     size_t file_size = openFile(filename);
 
@@ -640,6 +671,13 @@ void jASTERIX::decodeFile(
 
             // create ASTERIX parser
     ASTERIXParser asterix_parser(data_block_definition_, category_definitions_, debug_);
+
+    if (do_flat)
+    {
+        flat_record_indices_.clear();
+        setupFlatColumns();
+        asterix_parser.setFlatRecordIndices(&flat_record_indices_);
+    }
 
             // create frame parser
     bool debug_framing = debug_ && !debug_exclude_framing_;
@@ -718,13 +756,28 @@ void jASTERIX::decodeFile(
                 loginf << "jASTERIX processing " << num_frames_ << " frames, " << num_records_
                        << " records " << num_errors_ << " errors " << logendl;
 
-            if (print_)
-                std::cout << data_chunk->dump(print_dump_indent) << std::endl;
+            if (do_flat)
+            {
+                auto flat_chunk = moveFlatData();
 
-            if (data_callback)
-                data_callback(std::move(data_chunk), num_callback_frames, dec_ret.first, dec_ret.second);
-            else
+                if (print_)
+                    std::cout << flat_chunk->dump(print_dump_indent) << std::endl;
+
+                if (data_callback)
+                    data_callback(std::move(flat_chunk), num_callback_frames, dec_ret.first, dec_ret.second);
+
                 data_chunk = nullptr;
+            }
+            else
+            {
+                if (print_)
+                    std::cout << data_chunk->dump(print_dump_indent) << std::endl;
+
+                if (data_callback)
+                    data_callback(std::move(data_chunk), num_callback_frames, dec_ret.first, dec_ret.second);
+                else
+                    data_chunk = nullptr;
+            }
 
             if (frame_limit > 0 && num_frames_ >= static_cast<unsigned>(frame_limit))
             {
@@ -755,8 +808,11 @@ void jASTERIX::decodeFile(
 
 void jASTERIX::decodeFile(
     const std::string& filename,
-    std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)> data_callback)
+    std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)> data_callback,
+    bool do_flat)
 {
+    if (do_flat)
+        single_thread = true;
 
     size_t file_size = openFile(filename);
 
@@ -766,6 +822,13 @@ void jASTERIX::decodeFile(
 
     // create ASTERIX parser
     ASTERIXParser asterix_parser(data_block_definition_, category_definitions_, debug_);
+
+    if (do_flat)
+    {
+        flat_record_indices_.clear();
+        setupFlatColumns();
+        asterix_parser.setFlatRecordIndices(&flat_record_indices_);
+    }
 
     if (debug_)
         loginf << "jASTERIX: finding data blocks" << logendl;
@@ -835,13 +898,28 @@ void jASTERIX::decodeFile(
             num_records_ += dec_ret.first;
             num_errors_ += dec_ret.second;
 
-            if (print_)
-                std::cout << data_block_chunk->dump(print_dump_indent) << std::endl;
+            if (do_flat)
+            {
+                auto flat_chunk = moveFlatData();
 
-            if (data_callback)
-                data_callback(std::move(data_block_chunk), 0, dec_ret.first, dec_ret.second);
-            else
+                if (print_)
+                    std::cout << flat_chunk->dump(print_dump_indent) << std::endl;
+
+                if (data_callback)
+                    data_callback(std::move(flat_chunk), 0, dec_ret.first, dec_ret.second);
+
                 data_block_chunk = nullptr;
+            }
+            else
+            {
+                if (print_)
+                    std::cout << data_block_chunk->dump(print_dump_indent) << std::endl;
+
+                if (data_callback)
+                    data_callback(std::move(data_block_chunk), 0, dec_ret.first, dec_ret.second);
+                else
+                    data_block_chunk = nullptr;
+            }
         }
         catch (std::exception& e)
         {

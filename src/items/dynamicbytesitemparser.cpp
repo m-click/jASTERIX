@@ -102,7 +102,7 @@ size_t DynamicBytesItemParser::parseItem(const char* data, size_t index, size_t 
 
     //traced_assert(!target.contains(name_));  // hot path — O(N) json lookup per field
 
-    target.emplace(name_, json::object({{"index", index}, {"length", length}}));
+    writeValue(target, json::object({{"index", index}, {"length", length}}));
 
     if (debug)
         loginf << "parsed dynamic bytes item '" + name_ + "' index " << index << " length "
@@ -116,6 +116,11 @@ size_t DynamicBytesItemParser::encodeItem(const nlohmann::json& source, char* ta
 {
     throw runtime_error("dynamic bytes item '" + name_ + "' encoding not supported "
                         "(used only at data block level, not record level)");
+}
+
+void DynamicBytesItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    callback(this, long_name_);
 }
 
 }  // namespace jASTERIX

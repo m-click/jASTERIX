@@ -100,7 +100,7 @@ size_t FixedBytesItemParser::parseItem(const char* data, size_t index, size_t si
                    << length_ << " data type " << data_type_ << " value '" << data_str << "'"
                    << logendl;
 
-        target.emplace(name_, std::move(data_str));
+        writeValue(target,std::move(data_str));
 
         return length_;
     }
@@ -151,9 +151,9 @@ size_t FixedBytesItemParser::parseItem(const char* data, size_t index, size_t si
                    << (has_lsb_ ? " lsb " + to_string(lsb_) : "") << logendl;
 
         if (has_lsb_)
-            target.emplace(name_, lsb_ * data_uint);
+            writeValue(target,lsb_ * data_uint);
         else
-            target.emplace(name_, data_uint);
+            writeValue(target,data_uint);
 
         return length_;
     }
@@ -209,9 +209,9 @@ size_t FixedBytesItemParser::parseItem(const char* data, size_t index, size_t si
                    << (has_lsb_ ? " lsb " + to_string(lsb_) : "") << logendl;
 
         if (has_lsb_)
-            target.emplace(name_, lsb_ * data_int);
+            writeValue(target,lsb_ * data_int);
         else
-            target.emplace(name_, data_int);
+            writeValue(target,data_int);
 
         return length_;
     }
@@ -227,7 +227,7 @@ size_t FixedBytesItemParser::parseItem(const char* data, size_t index, size_t si
                    << logendl;
         }
 
-        target.emplace(name_, std::move(data_str));
+        writeValue(target,std::move(data_str));
 
         return length_;
     }
@@ -330,6 +330,11 @@ size_t FixedBytesItemParser::encodeItem(const nlohmann::json& source, char* targ
     else
         throw runtime_error("fixed bytes item '" + name_ + "' encoding with unknown data type '" +
                             data_type_ + "'");
+}
+
+void FixedBytesItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    callback(this, long_name_);
 }
 
 }  // namespace jASTERIX

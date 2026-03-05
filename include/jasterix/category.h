@@ -87,6 +87,7 @@ class Category
 
     CategoryItemInfo itemInfo () const;
 
+    void setupColumnWriters(const LeafSetupCallback& callback);
 
   protected:
     std::string number_;

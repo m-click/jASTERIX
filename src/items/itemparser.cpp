@@ -74,16 +74,33 @@ size_t ItemParser::parseItem(const char* data, size_t index, size_t size,
 
     size_t parsed_bytes{0};
 
-    json& item_target = target[number_];
-    for (auto& df_item : data_fields_)
+    if (column_mode_)
     {
-        parsed_bytes += df_item->parseItem(
-                    data, index + parsed_bytes, size, current_parsed_bytes, total_size, item_target, debug);
+        // Columnar mode: skip creating sub-object, pass target through
+        for (auto& df_item : data_fields_)
+        {
+            parsed_bytes += df_item->parseItem(
+                        data, index + parsed_bytes, size, current_parsed_bytes, total_size, target, debug);
 
-        if (index + parsed_bytes > total_size)
-            throw runtime_error("ItemParser '" + name_ + "': parsed " +
-                to_string(parsed_bytes) + " bytes at index " + to_string(index) +
-                " exceeds total_size " + to_string(total_size));
+            if (index + parsed_bytes > total_size)
+                throw runtime_error("ItemParser '" + name_ + "': parsed " +
+                    to_string(parsed_bytes) + " bytes at index " + to_string(index) +
+                    " exceeds total_size " + to_string(total_size));
+        }
+    }
+    else
+    {
+        json& item_target = target[number_];
+        for (auto& df_item : data_fields_)
+        {
+            parsed_bytes += df_item->parseItem(
+                        data, index + parsed_bytes, size, current_parsed_bytes, total_size, item_target, debug);
+
+            if (index + parsed_bytes > total_size)
+                throw runtime_error("ItemParser '" + name_ + "': parsed " +
+                    to_string(parsed_bytes) + " bytes at index " + to_string(index) +
+                    " exceeds total_size " + to_string(total_size));
+        }
     }
 
     if (debug)
@@ -141,5 +158,12 @@ void ItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) co
         field_it->addInfo(edition, info);
 }
 
+
+void ItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    column_mode_ = true;
+    for (auto& df_item : data_fields_)
+        df_item->setupColumnWriters(callback);
+}
 
 }  // namespace jASTERIX
