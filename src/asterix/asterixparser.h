@@ -51,6 +51,7 @@ class ASTERIXParser
     //                            bool debug);
 
     void setFlatRecordIndices(std::map<unsigned int, size_t>* indices);
+    bool flatMode() const { return flat_record_indices_ != nullptr; }
 
   private:
     std::string data_block_name_;

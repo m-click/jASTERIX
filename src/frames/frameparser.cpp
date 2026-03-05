@@ -203,7 +203,7 @@ std::pair<size_t, size_t> FrameParser::decodeFrames(const char* data, size_t tot
     std::pair<size_t, size_t> ret{0, 0};
     nlohmann::json& j_frames = target->at("frames");
 
-    if (debug || single_thread)  // switch to single thread in debug
+    if (debug || single_thread || asterix_parser_.flatMode())  // single thread in debug or flat mode
     {
         std::pair<size_t, size_t> tmp{0, 0};
 

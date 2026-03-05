@@ -660,9 +660,6 @@ void jASTERIX::decodeFile(
     std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)> data_callback,
     bool do_flat)
 {
-    if (do_flat)
-        single_thread = true;
-
     size_t file_size = openFile(filename);
 
     const char* data = file_.data();
@@ -811,9 +808,6 @@ void jASTERIX::decodeFile(
     std::function<void(std::unique_ptr<nlohmann::json>, size_t, size_t, size_t)> data_callback,
     bool do_flat)
 {
-    if (do_flat)
-        single_thread = true;
-
     size_t file_size = openFile(filename);
 
     const char* data = file_.data();
