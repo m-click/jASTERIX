@@ -947,7 +947,7 @@ void jASTERIX::decodeData(const char* data,
                           bool abortable,
                           bool do_flat)
 {
-    static ASTERIXParser asterix_parser_instance (data_block_definition_, category_definitions_, debug_);
+    ASTERIXParser asterix_parser_instance (data_block_definition_, category_definitions_, debug_);
 
     if (do_flat)
     {
