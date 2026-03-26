@@ -2091,6 +2091,7 @@
                                             "name": "Altitude",
                                             "comment": "Altitude in two\u2019s complement form\n-1300ft <= Altitude <= 100000ft",
                                             "type": "fixed_bits",
+                                            "data_type": "int",
                                             "start_bit": 0,
                                             "bit_length": 13,
                                             "lsb": 25.0
@@ -2135,6 +2136,7 @@
                                             "name": "Altitude",
                                             "comment": "Altitude in two\u2019s complement form\n-1300ft <= Altitude <= 100000ft",
                                             "type": "fixed_bits",
+                                            "data_type": "int",
                                             "start_bit": 0,
                                             "bit_length": 13,
                                             "lsb": 25.0
