@@ -663,7 +663,20 @@ std::unique_ptr<nlohmann::json> jASTERIX::moveFlatData()
 {
     auto result = std::make_unique<nlohmann::json>();
     for (auto& [cat, cat_data] : flat_data_)
-        (*result)[std::to_string(cat)] = std::move(cat_data);
+    {
+        auto idx_it = flat_record_indices_.find(cat);
+        if (idx_it == flat_record_indices_.end() || idx_it->second == 0)
+            continue;
+
+        nlohmann::json filtered_cat = nlohmann::json::object();
+        for (auto it = cat_data.begin(); it != cat_data.end(); ++it)
+        {
+            if (it.value().is_array() && it.value().empty())
+                continue;
+            filtered_cat[it.key()] = std::move(it.value());
+        }
+        (*result)[std::to_string(cat)] = std::move(filtered_cat);
+    }
 
     setupFlatColumns();  // re-create fresh arrays and re-inject pointers
 
