@@ -87,6 +87,14 @@ class jASTERIX
     std::string analyzeDataCSV(const char* data, unsigned int total_size,
                                                 unsigned int record_limit=0);
 
+    // PCAP variants: extract the ASTERIX payload from a PCAP capture (libpcap, raw/netto,
+    // no framing) and analyze it per detected network stream (signature). The returned JSON
+    // is keyed by signature string, each value being the analyzeData result for that stream.
+    std::unique_ptr<nlohmann::json> analyzePCAPFile(const std::string& filename,
+                                                    unsigned int record_limit=0);
+    std::string analyzePCAPFileCSV(const std::string& filename,
+                                   unsigned int record_limit=0);
+
     // Callback signature for decodeFile/decodeData:
     //   data          — decoded JSON chunk (frames or data_blocks, or flat columnar data)
     //   total_num_bytes — cumulative number of bytes decoded so far (for progress tracking)
@@ -114,6 +122,12 @@ class jASTERIX
                     decode_callback_t data_callback = nullptr,
                     bool abortable = true,
                     bool do_flat = false);
+
+    // Decode an ASTERIX PCAP capture (libpcap). Extracts the payload of all network streams
+    // in capture order (raw/netto, no framing) and decodes it in chunks via decodeData.
+    void decodePCAPFile(const std::string& filename,
+                        decode_callback_t data_callback = nullptr,
+                        bool do_flat = false);
 
     // Encode a single record for a given category into a data block (CAT + LEN + record).
     std::vector<char> encodeRecord(unsigned int category,

@@ -88,6 +88,10 @@ find_package ( LibArchive REQUIRED )
 message("  LibArchive_INCLUDE_DIRS: ${LibArchive_INCLUDE_DIRS}")
 message("  LibArchive_LIBRARIES: ${LibArchive_LIBRARIES}")
 
+find_package ( PCAP REQUIRED )
+message("  PCAP_INCLUDE_DIR: ${PCAP_INCLUDE_DIR}")
+message("  PCAP_LIBRARY: ${PCAP_LIBRARY}")
+
 
 message("Install path: ${CMAKE_INSTALL_PREFIX}")
 
@@ -101,6 +105,7 @@ include_directories (
     ${PROJECT_BINARY_DIR}/include
     ${Boost_INCLUDE_DIRS}
     ${LibArchive_INCLUDE_DIRS}
+    ${PCAP_INCLUDE_DIR}
     )
 
 target_link_libraries ( jasterix
@@ -108,6 +113,7 @@ target_link_libraries ( jasterix
     TBB::tbb
     ${LibArchive_LIBRARIES}
     ${Boost_LIBRARIES}
+    ${PCAP_LIBRARY}
     )
 
 target_sources(jasterix

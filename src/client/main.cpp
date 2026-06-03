@@ -90,6 +90,8 @@ int main(int argc, char** argv)
     std::string framing{""};
     std::string definition_path;
     std::string only_cats;
+    std::string editions;
+    bool pcap{false};
     bool debug{false};
     bool debug_include_framing{false};
     bool print{false};
@@ -129,6 +131,11 @@ int main(int argc, char** argv)
                 "single_thread", po::bool_switch(&jASTERIX::single_thread),
                 "process data in single thread")("only_cats", po::value<std::string>(&only_cats),
                                                  "restricts categories to be decoded, e.g. 20,21.")(
+                "editions", po::value<std::string>(&editions),
+                "set non-default editions per category, e.g. 21:0.26,48:1.15.")(
+                "pcap", po::bool_switch(&pcap),
+                "input file is a PCAP capture (libpcap); ASTERIX payload is extracted and "
+                "decoded as raw/netto (no framing).")(
                 "log_perf", po::bool_switch(&log_performance), "enable performance log after processing")(
                 "analyze", po::bool_switch(&analyze), "analyze data sources and contents")(
                 "analyze_csv", po::bool_switch(&analyze_csv), "analyze data sources and contents, print as CSV")(
@@ -258,6 +265,36 @@ int main(int argc, char** argv)
         }
     }
 
+    // cat -> edition pairs from "21:0.26,48:1.15"
+    std::vector<std::pair<unsigned int, std::string>> edition_list;
+    if (editions.size())
+    {
+        std::vector<std::string> edition_strings;
+        split(editions, ',', edition_strings);
+
+        for (auto& ed_it : edition_strings)
+        {
+            std::vector<std::string> parts;
+            split(ed_it, ':', parts);
+
+            if (parts.size() != 2 || !parts[0].size() || !parts[1].size())
+            {
+                logerr << "jASTERIX client: invalid edition spec '" << ed_it
+                       << "', expected cat:edition" << logendl;
+                return -1;
+            }
+
+            int cat = std::atoi(parts[0].c_str());
+            if (cat < 1 || cat > 255)
+            {
+                logerr << "jASTERIX client: impossible cat value '" << parts[0] << "'" << logendl;
+                return -1;
+            }
+
+            edition_list.emplace_back(static_cast<unsigned int>(cat), parts[1]);
+        }
+    }
+
     // check if basic configuration works
     try
     {
@@ -279,6 +316,28 @@ int main(int argc, char** argv)
                 if (debug)
                     loginf << "jASTERIX client: decoding category " << cat_it << logendl;
             }
+        }
+
+        for (auto& ed_it : edition_list)
+        {
+            if (!asterix.hasCategory(ed_it.first))
+            {
+                logerr << "jASTERIX client: edition set for unknown category " << ed_it.first
+                       << logendl;
+                return -1;
+            }
+
+            if (!asterix.category(ed_it.first)->hasEdition(ed_it.second))
+            {
+                logerr << "jASTERIX client: category " << ed_it.first << " has no edition '"
+                       << ed_it.second << "'" << logendl;
+                return -1;
+            }
+
+            asterix.category(ed_it.first)->setCurrentEdition(ed_it.second);
+
+            loginf << "jASTERIX client: category " << ed_it.first << " using edition '"
+                   << ed_it.second << "'" << logendl;
         }
 
         if (print_cat_info)
@@ -330,7 +389,14 @@ int main(int argc, char** argv)
 
             string tmp_str;
 
-            if (framing == "netto" || framing == "")
+            if (pcap)
+            {
+                if (analyze_csv)
+                    tmp_str = asterix.analyzePCAPFileCSV(filename, analyze_record_limit);
+                else
+                    tmp_str = asterix.analyzePCAPFile(filename, analyze_record_limit)->dump(4);
+            }
+            else if (framing == "netto" || framing == "")
             {
                 if (analyze_csv)
                     tmp_str = asterix.analyzeFileCSV(filename, analyze_record_limit);
@@ -350,7 +416,21 @@ int main(int argc, char** argv)
         }
         else
         {
-            if (framing == "netto" || framing == "")
+            if (pcap)
+            {
+                if (json_writer)
+                    asterix.decodePCAPFile(filename, write_callback, flat);
+                else  // printing done via flag
+#if USE_OPENSSL
+                    if (check_artas_md5_hash.size())
+                        asterix.decodePCAPFile(filename, check_callback, flat);
+                    else
+                        asterix.decodePCAPFile(filename, empty_callback, flat);
+#else
+                    asterix.decodePCAPFile(filename, empty_callback, flat);
+#endif
+            }
+            else if (framing == "netto" || framing == "")
             {
                 if (json_writer)
                     asterix.decodeFile(filename, write_callback, flat);

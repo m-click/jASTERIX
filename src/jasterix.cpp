@@ -25,6 +25,7 @@
 #include "frameparser.h"
 #include "frameparsertask.h"
 #include "logger.h"
+#include "pcap/pcapreader.h"
 #include "traced_assert.h"
 
 #include <malloc.h>
@@ -443,6 +444,87 @@ std::string jASTERIX::analyzeFileCSV(const std::string& filename, unsigned int r
     ss << toCSV(data_item_analysis);
 
     //loginf << "jASTERIX: analyzeFileCSV: toCSV '" << ss.str() << "'";
+
+    return ss.str();
+}
+
+std::unique_ptr<nlohmann::json> jASTERIX::analyzePCAPFile(const std::string& filename,
+                                                          unsigned int record_limit)
+{
+    loginf << "jASTERIX: analyzePCAPFile: filename '" << filename << "' record_limit "
+           << record_limit << logendl;
+
+    PcapReader reader;
+
+    if (!reader.open(filename))
+        throw std::runtime_error("jASTERIX unable to open PCAP file '" + filename + "'");
+
+    // accumulate payload per network stream (signature), so each can be probed individually
+    std::map<PcapReader::Signature, PcapReader::StreamData> streams = reader.readPerSignature();
+
+    std::unique_ptr<nlohmann::json> result {new nlohmann::json()};
+
+    for (auto& stream_it : streams)
+    {
+        const std::string sig_str = PcapReader::signatureToString(stream_it.first);
+        PcapReader::StreamData& stream = stream_it.second;
+
+        if (stream.data.empty())
+            continue;
+
+        // reset per-invocation counters so each stream is analyzed independently
+        num_records_ = 0;
+        num_errors_  = 0;
+
+        std::unique_ptr<nlohmann::json> stream_result =
+            analyzeData(stream.data.data(), stream.data.size(), record_limit);
+
+        (*result)[sig_str] = std::move(*stream_result);
+    }
+
+    if (reader.hasUnknownHeaders())
+        (*result)["unknown_packet_headers"] = true;
+
+    return result;
+}
+
+std::string jASTERIX::analyzePCAPFileCSV(const std::string& filename, unsigned int record_limit)
+{
+    std::unique_ptr<nlohmann::json> analysis_result = analyzePCAPFile(filename, record_limit);
+
+    std::stringstream ss;
+
+    for (auto& sig_it : analysis_result->items())
+    {
+        if (!sig_it.value().is_object())  // skip scalar entries like "unknown_packet_headers"
+            continue;
+
+        ss << "signature;" << sig_it.key() << endl;
+
+        nlohmann::json stream_result = sig_it.value();
+
+        unsigned int num_errors = 0;
+        if (stream_result.contains("num_errors"))
+        {
+            num_errors = stream_result.at("num_errors");
+            stream_result.erase("num_errors");
+        }
+        ss << "num_errors;" << num_errors << endl;
+
+        unsigned int num_records = 0;
+        if (stream_result.contains("num_records"))
+        {
+            num_records = stream_result.at("num_records");
+            stream_result.erase("num_records");
+        }
+        ss << "num_records;" << num_records << endl;
+
+        std::map<std::string, std::map<std::string, std::map<std::string, nlohmann::json>>>
+            data_item_analysis = stream_result;
+
+        ss << toCSV(data_item_analysis);
+        ss << endl;
+    }
 
     return ss.str();
 }
@@ -1118,6 +1200,53 @@ void jASTERIX::decodeData(const char* data,
 
     if (debug_)
         loginf << "jASTERIX decode data done" << logendl;
+}
+
+void jASTERIX::decodePCAPFile(const std::string& filename,
+                              decode_callback_t data_callback,
+                              bool do_flat)
+{
+    loginf << "jASTERIX: decodePCAPFile: filename '" << filename << "'" << logendl;
+
+    PcapReader reader;
+
+    if (!reader.open(filename))
+        throw std::runtime_error("jASTERIX unable to open PCAP file '" + filename + "'");
+
+    // process the file in chunks of payload bytes, decoding each via decodeData (raw/netto)
+    const size_t chunk_max_bytes = 4 * 1024 * 1024;
+
+    num_frames_  = 0;
+    num_records_ = 0;
+    num_errors_  = 0;
+
+    stop_decoding_ = false;
+
+    std::vector<char> chunk;
+    bool              eof = false;
+
+    while (!eof && !stop_decoding_)
+    {
+        if (!reader.readNextChunk(chunk, chunk_max_bytes, eof))
+            throw std::runtime_error("jASTERIX error reading PCAP file '" + filename + "'");
+
+        if (chunk.empty())
+            continue;
+
+        if (debug_)
+            loginf << "jASTERIX: decodePCAPFile: decoding " << chunk.size() << " payload byte(s)"
+                   << logendl;
+
+        // each chunk is a self-contained, contiguous sequence of ASTERIX data blocks
+        decodeData(chunk.data(), chunk.size(), data_callback, /*abortable*/ true, do_flat);
+    }
+
+    if (reader.hasUnknownHeaders())
+        loginf << "jASTERIX: decodePCAPFile: encountered unknown packet headers in '" << filename
+               << "'" << logendl;
+
+    if (debug_)
+        loginf << "jASTERIX: decodePCAPFile: done" << logendl;
 }
 
 size_t jASTERIX::numFrames() const { return num_frames_; }
