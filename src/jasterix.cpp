@@ -480,6 +480,15 @@ std::unique_ptr<nlohmann::json> jASTERIX::analyzePCAPFile(const std::string& fil
             analyzeData(stream.data.data(), stream.data.size(), record_limit);
 
         (*result)[sig_str] = std::move(*stream_result);
+
+        // first/last network (capture) timestamp of the stream, as date/time
+        if (stream.has_time)
+        {
+            (*result)[sig_str]["first_time"]       = PcapReader::timeToString(stream.first_time);
+            (*result)[sig_str]["last_time"]        = PcapReader::timeToString(stream.last_time);
+            (*result)[sig_str]["first_time_epoch"] = stream.first_time;
+            (*result)[sig_str]["last_time_epoch"]  = stream.last_time;
+        }
     }
 
     if (reader.hasUnknownHeaders())
@@ -518,6 +527,19 @@ std::string jASTERIX::analyzePCAPFileCSV(const std::string& filename, unsigned i
             stream_result.erase("num_records");
         }
         ss << "num_records;" << num_records << endl;
+
+        if (stream_result.contains("first_time"))
+        {
+            ss << "first_time;" << stream_result.at("first_time").get<std::string>() << endl;
+            stream_result.erase("first_time");
+        }
+        if (stream_result.contains("last_time"))
+        {
+            ss << "last_time;" << stream_result.at("last_time").get<std::string>() << endl;
+            stream_result.erase("last_time");
+        }
+        stream_result.erase("first_time_epoch");
+        stream_result.erase("last_time_epoch");
 
         std::map<std::string, std::map<std::string, std::map<std::string, nlohmann::json>>>
             data_item_analysis = stream_result;

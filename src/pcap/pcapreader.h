@@ -47,6 +47,10 @@ class PcapReader
         size_t            packets = 0;  // number of packets contributing
         size_t            bytes   = 0;  // total payload bytes seen (may exceed data.size() if capped)
         std::vector<char> data;         // accumulated payload bytes (possibly capped)
+
+        bool   has_time   = false;  // whether first_time/last_time are set
+        double first_time = 0.0;    // capture time of the first packet (seconds since epoch, UTC)
+        double last_time  = 0.0;    // capture time of the last packet (seconds since epoch, UTC)
     };
 
     PcapReader();
@@ -77,6 +81,9 @@ class PcapReader
 
     static std::string signatureToString(const Signature& signature);
 
+    // formats a UTC date/time string (e.g. "2025-10-31 01:11:55.123 UTC") from epoch seconds
+    static std::string timeToString(double epoch_seconds);
+
   private:
     enum class Mode
     {
@@ -88,7 +95,8 @@ class PcapReader
     void digestPacket(const struct pcap_pkthdr* pkthdr, const unsigned char* packet);
     void digestEther(int ether_type, const struct pcap_pkthdr* pkthdr,
                      const unsigned char* packet, unsigned long data_offs);
-    void addPayload(const Signature& signature, const unsigned char* data, size_t len);
+    void addPayload(const Signature& signature, const unsigned char* data, size_t len,
+                    double timestamp);
 
     friend void pcapReaderPacketHandler(unsigned char*, const struct pcap_pkthdr*,
                                         const unsigned char*);

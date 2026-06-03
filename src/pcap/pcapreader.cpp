@@ -30,6 +30,8 @@
 #include <netinet/udp.h>
 #include <arpa/inet.h>
 
+#include <cstdio>
+#include <ctime>
 #include <sstream>
 
 using namespace std;
@@ -196,10 +198,14 @@ void PcapReader::digestEther(int ether_type, const struct pcap_pkthdr* pkthdr,
     Signature signature(ip_protocol, ip_version, source_ip_str, source_port, dest_ip_str,
                         dest_port);
 
-    addPayload(signature, data, data_length);
+    // capture (network) timestamp of this packet, seconds since epoch (UTC)
+    double timestamp = (double)pkthdr->ts.tv_sec + (double)pkthdr->ts.tv_usec / 1.0e6;
+
+    addPayload(signature, data, data_length, timestamp);
 }
 
-void PcapReader::addPayload(const Signature& signature, const unsigned char* data, size_t len)
+void PcapReader::addPayload(const Signature& signature, const unsigned char* data, size_t len,
+                            double timestamp)
 {
     ++num_packets_read_;
 
@@ -208,6 +214,14 @@ void PcapReader::addPayload(const Signature& signature, const unsigned char* dat
         StreamData& stream = data_per_signature_[signature];
         ++stream.packets;
         stream.bytes += len;
+
+        // packets are delivered in capture order, so first/last follow naturally
+        if (!stream.has_time)
+        {
+            stream.first_time = timestamp;
+            stream.has_time   = true;
+        }
+        stream.last_time = timestamp;
 
         if (stream.data.size() < max_bytes_per_sig_)
         {
@@ -368,5 +382,28 @@ std::string PcapReader::signatureToString(const Signature& signature)
     ss << std::get<4>(signature) << ":" << std::get<5>(signature);
 
     return ss.str();
+}
+
+std::string PcapReader::timeToString(double epoch_seconds)
+{
+    time_t secs = (time_t)epoch_seconds;
+    int    ms   = (int)((epoch_seconds - (double)secs) * 1000.0 + 0.5);
+
+    if (ms >= 1000)  // rounding carry
+    {
+        ms -= 1000;
+        secs += 1;
+    }
+
+    struct tm tm_utc;
+    gmtime_r(&secs, &tm_utc);
+
+    char date_buf[32];
+    strftime(date_buf, sizeof(date_buf), "%Y-%m-%d %H:%M:%S", &tm_utc);
+
+    char out_buf[48];
+    snprintf(out_buf, sizeof(out_buf), "%s.%03d UTC", date_buf, ms);
+
+    return std::string(out_buf);
 }
 }  // namespace jASTERIX
