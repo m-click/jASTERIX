@@ -1,18 +1,18 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "catch.hpp"
@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat001_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat001_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                           size_t num_records, size_t num_errors)
 {
     loginf << "cat001 test: callback" << logendl;
@@ -136,10 +136,7 @@ void test_cat001_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     // 11111110
 
     loginf << "cat001 test: fspec" << logendl;
-    REQUIRE(record.contains("FSPEC"));
-    REQUIRE(record.at("FSPEC").size() == 8);
 
-    REQUIRE(record.at("FSPEC") == std::vector<bool>({1, 1, 1, 1, 1, 1, 1, 0}));
 
     //    ; Data Record:
     //    ;  I001/010: =0x 00 01
@@ -159,7 +156,6 @@ void test_cat001_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("020").at("ANT") == 0);
     REQUIRE(record.at("020").at("SPI") == 0);
     REQUIRE(record.at("020").at("RAB") == 0);
-    REQUIRE(record.at("020").at("FX") == 0);
 
     //    ;  I001/040: =0x 3f b8 b6 7c
     //    ;  Measured Position: rng=16312 (127.438 nmi); azm=46716 (256.619 deg)

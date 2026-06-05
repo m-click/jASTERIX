@@ -1,23 +1,22 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "asterixparser.h"
 
-#include <tbb/tbb.h>
 
 #include <iomanip>
 #include <iostream>
@@ -27,6 +26,7 @@
 #include "logger.h"
 #include "record.h"
 #include "string_conv.h"
+#include "traced_assert.h"
 
 #if USE_OPENSSL
 #include <openssl/md5.h>
@@ -66,7 +66,7 @@ ASTERIXParser::ASTERIXParser(
                    << logendl;
 
         item = ItemParserBase::createItemParser(data_item_it, "");
-        assert(item);
+        traced_assert(item);
         data_block_items_.push_back(std::unique_ptr<ItemParserBase>{item});
     }
 
@@ -117,7 +117,7 @@ std::tuple<size_t, size_t, bool, bool> ASTERIXParser::findDataBlocks(
         loginf << "asterix parser finding data blocks at index " << index << " length " << length
                << logendl;
 
-    assert(target);
+    traced_assert(target);
 
     size_t parsed_bytes{0};
     size_t parsed_data_block_bytes{0};
@@ -159,11 +159,12 @@ std::tuple<size_t, size_t, bool, bool> ASTERIXParser::findDataBlocks(
 
             parsed_data_block_bytes = 0;
 
+            nlohmann::json& current_block = (*target)[data_block_name_][num_blocks];
             for (auto& r_item : data_block_items_)
             {
                 parsed_bytes =
                     r_item->parseItem(data, current_index, length, parsed_data_block_bytes, total_size,
-                                      (*target)[data_block_name_][num_blocks], debug);
+                                      current_block, debug);
                 //            loginf << "UGA FP2 parsed " << parsed_bytes << " target '" <<
                 //            target[data_block_name_][num_blocks]
                 //                      << "'" << logendl;
@@ -228,6 +229,21 @@ std::tuple<size_t, size_t, bool, bool> ASTERIXParser::findDataBlocks(
                                hit_data_block_limit ? true : !hit_data_block_chunk_limit);
 }
 
+void ASTERIXParser::setFlatRecordIndices(std::map<unsigned int, size_t>* indices)
+{
+    flat_record_indices_ = indices;
+}
+
+void ASTERIXParser::setFlatHashColumns(std::map<unsigned int, json*>* columns)
+{
+    flat_hash_columns_ = columns;
+}
+
+void ASTERIXParser::setFlatData(std::map<unsigned int, json>* data)
+{
+    flat_data_ = data;
+}
+
 std::pair<size_t, size_t> ASTERIXParser::decodeDataBlocks(const char* data, size_t total_size,
                                                           nlohmann::json& data_blocks, bool debug)
 {
@@ -244,23 +260,24 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlocks(const char* data, size
     std::vector<std::pair<size_t, size_t>> num_records;
     num_records.resize(num_data_blocks, {0, 0});
 
-    if (debug || single_thread)  // switch to single thread in debug
-    {
-        for (size_t cnt = 0; cnt < num_data_blocks; ++cnt)
-            num_records.at(cnt) = decodeDataBlock(data, total_size, data_blocks[cnt], debug);
-    }
-    else
-    {
-        tbb::parallel_for(size_t(0), num_data_blocks, [&](size_t cnt) {
-            num_records.at(cnt) = decodeDataBlock(data, total_size, data_blocks[cnt], debug);
-        });
-    }
+    for (size_t cnt = 0; cnt < num_data_blocks; ++cnt)
+        num_records.at(cnt) = decodeDataBlock(data, total_size, data_blocks[cnt], debug);
 
     //    for (auto num_record_it : num_records)
     //    {
     //        ret.first += num_record_it.first;
     //        ret.second += num_record_it.second;
     //    }
+
+    auto limitJsonDump = [](const nlohmann::json& json_obj, size_t max_len = 500) -> std::string
+    {
+        std::string result = json_obj.dump(-1);  // -1 = compact format
+        if (result.length() > max_len)
+        {
+            result = result.substr(0, max_len - 3) + "...";
+        }
+        return result;
+    };
 
     size_t cnt = 0;
     for (std::vector<std::pair<size_t, size_t>>::iterator it = num_records.begin();
@@ -271,11 +288,11 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlocks(const char* data, size
 
         if (it->second)
         {
-            loginf << "asterix parser reported error in record '" << data_blocks[cnt].dump(4) << "'"
+            logerr << "asterix parser reported error in record '" << limitJsonDump(data_blocks[cnt]) << "'"
                    << logendl;
 
-            if (it != num_records.begin())
-                loginf << "previous record " << data_blocks[cnt - 1].dump(4) << "'" << logendl;
+            if (debug && it != num_records.begin())
+                loginf << "previous record " << limitJsonDump(data_blocks[cnt - 1]) << "'" << logendl;
         }
 
         ++cnt;
@@ -293,7 +310,7 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
     if (debug)
         loginf << "ASTERIXParser: decodeDataBlock" << logendl;
 
-    std::pair<size_t, size_t> ret{0, 0};  // num records, num errors
+    unsigned int num_records {0}, num_errors{0};
 
     // check record information
     // json& record = target.at(data_block_name_);
@@ -349,82 +366,337 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
                << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
                << "'" << logendl;
 
+    constexpr double tod_24h = 86400.0;
+
     // try to decode
     if (records_.count(cat) != 0)
     {
         size_t data_block_parsed_bytes{0};
         size_t record_parsed_bytes{0};
 
-        try
+        if (flat_record_indices_ && flat_record_indices_->count(cat))
         {
-            // decode
-            if (debug)
-                loginf << "asterix parser decoding record with cat " << cat << " index "
-                       << data_block_index << " length " << data_block_length << logendl;
-
-            data_block_content.emplace("records", json::array());
-            json& records = data_block_content.at("records");
-
-            // create records until end of content
-            while (data_block_parsed_bytes < data_block_length)
+            // flat/columnar mode — no records array, leaves write to column arrays
+            try
             {
-                // loginf << "asterix parser decoding record " << cnt << " parsed bytes " <<
-                // parsed_bytes_record
-                // << " length " << record_length;
-
-                record_parsed_bytes =
-                    records_.at(cat)->parseItem(
-                            data, data_block_index + data_block_parsed_bytes,
-                            data_block_length - data_block_parsed_bytes,
-                            data_block_parsed_bytes, total_size, records[ret.first], debug);
-
                 if (debug)
-                    loginf << "record with cat " << cat << " index "
-                           << data_block_index + data_block_parsed_bytes << " length "
-                           << record_parsed_bytes << " data '"
-                           << binary2hex((const unsigned char*)&data[data_block_index +
-                                                                     data_block_parsed_bytes],
-                                         record_parsed_bytes)
-                           << "'" << logendl;
+                    loginf << "asterix parser decoding flat record with cat " << cat << " index "
+                           << data_block_index << " length " << data_block_length << logendl;
 
-                if (debug)
-                    loginf << "asterix parser decoding record with cat " << cat << " index "
-                           << data_block_index << ": " << records[ret.first].dump(4) << "'"
-                           << logendl;
+                json record_scratch;
+
+                // CAT001 allows SAC/SIC (item 010) only in the first record of a data block
+                // (see EUROCONTROL-SPEC-0149-2a, §5.3.2.1). Track last-seen values so we
+                // can inject them into subsequent records that omit item 010.
+                json cat001_sac_sic;
+
+                while (data_block_parsed_bytes < data_block_length)
+                {
+                    if (data_block_index + data_block_parsed_bytes >= total_size)
+                    {
+                        logerr << "unexpected data block item at index "
+                               << data_block_index + data_block_parsed_bytes
+                               << " total_size " << total_size << ", quitting";
+                        break;
+                    }
+
+                    record_scratch.clear();
+
+                    record_parsed_bytes =
+                        records_.at(cat)->parseItem(
+                                data, data_block_index + data_block_parsed_bytes,
+                                data_block_length - data_block_parsed_bytes,
+                                data_block_parsed_bytes, total_size, record_scratch, debug);
+
+                    // CAT001: propagate SAC/SIC from first record to subsequent records
+                    // that omit item 010 within the same data block.
+                    // In flat/columnar mode the ItemParser skips creating the "010"
+                    // sub-object — leaf values (SAC, SIC) are written directly into
+                    // record_scratch, so we check for "SAC" instead of "010".
+                    if (cat == 1)
+                    {
+                        if (record_scratch.contains("SAC"))
+                        {
+                            cat001_sac_sic["SAC"] = record_scratch.at("SAC");
+                            cat001_sac_sic["SIC"] = record_scratch.at("SIC");
+                        }
+                        else if (!cat001_sac_sic.is_null() && flat_data_ && flat_data_->count(cat))
+                        {
+                            auto& cat_cols = flat_data_->at(cat);
+                            size_t ri = flat_record_indices_->at(cat);
+
+                            if (cat001_sac_sic.contains("SAC") && cat_cols.contains("010.SAC"))
+                                cat_cols.at("010.SAC")[ri] = cat001_sac_sic.at("SAC");
+                            if (cat001_sac_sic.contains("SIC") && cat_cols.contains("010.SIC"))
+                                cat_cols.at("010.SIC")[ri] = cat001_sac_sic.at("SIC");
+                        }
+
+                        // Reconstruct CAT001 truncated time using last CAT002 full
+                        // Time of Day for the same data source. In flat mode the
+                        // data block / record ordering is lost, so the consumer
+                        // cannot perform this correction itself.
+                        if (flat_data_ && flat_data_->count(1))
+                        {
+                            // Determine SAC/SIC — either from this record or propagated
+                            size_t sac = 0, sic = 0;
+                            bool have_source = false;
+
+                            if (record_scratch.contains("SAC"))
+                            {
+                                sac = record_scratch.at("SAC").get<size_t>();
+                                sic = record_scratch.at("SIC").get<size_t>();
+                                have_source = true;
+                            }
+                            else if (!cat001_sac_sic.is_null()
+                                     && cat001_sac_sic.contains("SAC"))
+                            {
+                                sac = cat001_sac_sic.at("SAC").get<size_t>();
+                                sic = cat001_sac_sic.at("SIC").get<size_t>();
+                                have_source = true;
+                            }
+
+                            if (have_source)
+                            {
+                                std::string source_id =
+                                    to_string(sac) + "/" + to_string(sic);
+
+                                auto ref_it = cat002_last_tod_.find(source_id);
+
+                                if (ref_it != cat002_last_tod_.end())
+                                {
+                                    auto& cat_cols = flat_data_->at(1);
+                                    size_t ri = flat_record_indices_->at(1);
+                                    const std::string src_col =
+                                        "141.Truncated Time of Day";
+                                    const std::string dst_col =
+                                        "140.Time-of-Day";
+
+                                    bool has_trunc = cat_cols.contains(src_col)
+                                        && !cat_cols.at(src_col)[ri].is_null();
+
+                                    if (has_trunc)
+                                    {
+                                        double t_trunc = cat_cols.at(src_col)[ri].get<double>();
+
+                                        traced_assert(t_trunc >= 0 && t_trunc <= tod_24h);
+
+                                        auto period_it = cat002_last_tod_period_.find(source_id);
+
+                                        if (period_it != cat002_last_tod_period_.end())
+                                        {
+                                            traced_assert(period_it->second >= 0 && period_it->second < tod_24h);
+
+                                            double full_tod = t_trunc + period_it->second;
+
+                                            //loginf << "UGA1 " << source_id << " full_tod " << full_tod;
+
+                                            traced_assert(full_tod >= 0 && full_tod < tod_24h);
+                                            cat_cols[dst_col][ri] = full_tod;
+                                        }
+                                        else
+                                            cat_cols[dst_col][ri] = nullptr;
+                                    }
+                                    else
+                                    {
+                                        traced_assert(ref_it->second >= 0 && ref_it->second <= tod_24h);
+                                        cat_cols[dst_col][ri] = ref_it->second;
+
+                                        //loginf << "UGA1b " << source_id << " full_tod " << ref_it->second;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // CAT002: store full Time of Day and 512-second period base
+                    // per data source for CAT001 truncated time reconstruction.
+                    if (cat == 2 && record_scratch.contains("SAC")
+                        && record_scratch.contains("Time of Day"))
+                    {
+                        double tod = record_scratch.at("Time of Day").get<double>();
+                        traced_assert(tod >= 0 && tod < tod_24h);
+
+                        std::string source_id = to_string(record_scratch.at("SAC").get<size_t>()) +
+                                                "/" +
+                                                to_string(record_scratch.at("SIC").get<size_t>());
+
+                        double tod_period = 512.0 * static_cast<int>(tod / 512.0);
+                        traced_assert(tod_period >= 0 && tod_period < 86400.0);
+
+                        cat002_last_tod_[source_id] = tod;
+                        cat002_last_tod_period_[source_id] = tod_period;
+
+                        //loginf << "UGA2 " << source_id << " tod " << tod << " period " << tod_period;
+                    }
 
 #if USE_OPENSSL
-                if (add_artas_md5_hash)
-                    calculateARTASMD5Hash(&data[data_block_index + data_block_parsed_bytes],
-                                          record_parsed_bytes, records[ret.first]);
+                    if (add_artas_md5_hash)
+                    {
+                        calculateARTASMD5Hash(&data[data_block_index + data_block_parsed_bytes],
+                                              record_parsed_bytes, record_scratch);
+
+                        if (flat_hash_columns_ && flat_hash_columns_->count(cat))
+                            flat_hash_columns_->at(cat)->push_back(record_scratch.at("artas_md5"));
+                    }
+                    else if (flat_hash_columns_ && flat_hash_columns_->count(cat))
+                        flat_hash_columns_->at(cat)->push_back(nullptr);
 #endif
-                if (add_record_data)
-                    data_block_content.at("records")[ret.first]["record_data"] = binary2hex(
-                        (const unsigned char*)&data[data_block_index + data_block_parsed_bytes],
-                        record_parsed_bytes);
 
-                records[ret.first]["index"] = data_block_index + data_block_parsed_bytes;
-                records[ret.first]["length"] = record_parsed_bytes;
+                    data_block_parsed_bytes += record_parsed_bytes;
 
-                data_block_parsed_bytes += record_parsed_bytes;
+                    if (data_block_parsed_bytes > data_block_length)
+                    {
+                        // record overran its data block => decode error (desync)
+                        logerr << "asterix parser decoding of cat " << cat
+                               << " failed: record overran data block (parsed "
+                               << data_block_parsed_bytes << " > " << data_block_length << ")"
+                               << " after index " << data_block_index + data_block_parsed_bytes
+                               << " data block "
+                               << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
+                               << logendl;
 
-                ++ret.first;
+                        ++num_errors;
+                        break;
+                    }
+
+                    ++flat_record_indices_->at(cat);
+                    ++num_records;
+                }
+            }
+            catch (std::exception& e)
+            {
+                logerr << "asterix parser decoding flat of cat " << cat << " failed with exception: '"
+                       << e.what()
+                       << "' after index " << data_block_index + data_block_parsed_bytes
+                       << " data block " << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
+                       << logendl;
+
+                ++num_errors;
             }
         }
-        catch (std::exception& e)
+        else
         {
-            std::string record_json;
+            // structured mode — current behavior
+            try
+            {
+                if (debug)
+                    loginf << "asterix parser decoding record with cat " << cat << " index "
+                           << data_block_index << " length " << data_block_length << logendl;
 
-            if (data_block_content.contains("records") && data_block_content.at("records").size())
-                record_json = data_block_content.at("records").back().dump(4);
+                data_block_content.emplace("records", json::array());
+                json& records = data_block_content.at("records");
 
-            logerr << "asterix parser decoding of cat " << cat << " failed with exception: '"
-                   << e.what() << "'"
-                   << "' after index " << data_block_index + data_block_parsed_bytes
-                   << " data block " << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
-                   << (record_json.size() ? " record json '" + record_json + "'" : "")
-                   << logendl;
+                while (data_block_parsed_bytes < data_block_length)
+                {
+                    if (data_block_index + data_block_parsed_bytes >= total_size)
+                    {
+                        logerr << "unexpected data block item at index "
+                               << data_block_index + data_block_parsed_bytes
+                               << " total_size " << total_size << ", quitting";
+                        break;
+                    }
 
-            ++ret.second;
+                    json& current_record = records[num_records];
+
+                    record_parsed_bytes =
+                        records_.at(cat)->parseItem(
+                                data, data_block_index + data_block_parsed_bytes,
+                                data_block_length - data_block_parsed_bytes,
+                                data_block_parsed_bytes, total_size, current_record, debug);
+
+                    if (debug)
+                        loginf << "record with cat " << cat << " index "
+                               << data_block_index + data_block_parsed_bytes << " length "
+                               << record_parsed_bytes << " data '"
+                               << binary2hex((const unsigned char*)&data[data_block_index +
+                                                                         data_block_parsed_bytes],
+                                             record_parsed_bytes)
+                               << "'" << logendl;
+
+                    if (debug)
+                        loginf << "asterix parser decoding record with cat " << cat << " index "
+                               << data_block_index << ": " << current_record.dump(4) << "'"
+                               << logendl;
+
+#if USE_OPENSSL
+                    if (add_artas_md5_hash)
+                        calculateARTASMD5Hash(&data[data_block_index + data_block_parsed_bytes],
+                                              record_parsed_bytes, current_record);
+#endif
+                    if (add_record_data)
+                        current_record["record_data"] = binary2hex(
+                            (const unsigned char*)&data[data_block_index + data_block_parsed_bytes],
+                            record_parsed_bytes);
+
+                    current_record["index"] = data_block_index + data_block_parsed_bytes;
+                    current_record["length"] = record_parsed_bytes;
+
+                    data_block_parsed_bytes += record_parsed_bytes;
+
+                    if (data_block_parsed_bytes > data_block_length)
+                    {
+                        // record overran its data block => decode error (desync)
+                        current_record["error"] = true;
+
+                        logerr << "asterix parser decoding of cat " << cat
+                               << " failed: record overran data block (parsed "
+                               << data_block_parsed_bytes << " > " << data_block_length << ")"
+                               << " after index " << data_block_index + data_block_parsed_bytes
+                               << " data block "
+                               << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
+                               << logendl;
+
+                        ++num_errors;
+                        break;
+                    }
+
+                    ++num_records;
+                }
+            }
+            catch (std::exception& e)
+            {
+                std::string record_json;
+
+                auto limitJsonDump = [](const nlohmann::json& json_obj, size_t max_len = 500) -> std::string
+                {
+                    std::string result = json_obj.dump(-1);
+                    if (result.length() > max_len)
+                    {
+                        result = result.substr(0, max_len - 3) + "...";
+                    }
+                    return result;
+                };
+
+                if (data_block_content.contains("records") && data_block_content.at("records").size())
+                {
+                    data_block_content.at("records").back()["error"] = true;
+
+                    record_json = limitJsonDump(data_block_content.at("records").back(), 200);
+                }
+
+                logerr << "asterix parser decoding of cat " << cat << " failed with exception: '"
+                       << e.what()
+                       << "' after index " << data_block_index + data_block_parsed_bytes
+                       << " data block " << binary2hex((const unsigned char*)&data[data_block_index], data_block_length)
+                       << (record_json.size() ? " record json '" + record_json + "'" : "")
+                       << logendl;
+
+                ++num_errors;
+            }
+        }
+
+        if (data_block_parsed_bytes != data_block_length)
+        {
+            if (data_block_parsed_bytes > data_block_length)
+                logerr << "ASTERIXParser: data block cat " << cat << ": parsed "
+                       << data_block_parsed_bytes << " bytes but block content length is "
+                       << data_block_length << logendl;
+            else
+                logerr << "ASTERIXParser: data block cat " << cat << ": parsed "
+                       << data_block_parsed_bytes << " bytes but block content length is "
+                       << data_block_length << " ("
+                       << (data_block_length - data_block_parsed_bytes)
+                       << " bytes unparsed)" << logendl;
         }
     }
     else if (debug)
@@ -432,27 +704,27 @@ std::pair<size_t, size_t> ASTERIXParser::decodeDataBlock(const char* data, size_
                << " length " << data_block_length << " skipped since cat definition is missing "
                << logendl;
 
-    if (ret.first && mappings_.count(cat))
+    if (num_records && !flat_record_indices_ && mappings_.count(cat))
     {
         if (debug)
-            loginf << "asterix parser decoding mapping cat " << cat << ", num records " << ret.first
+            loginf << "asterix parser decoding mapping cat " << cat << ", num records " << num_records
                    << logendl;
 
         std::shared_ptr<Mapping> current_mapping = mappings_.at(cat);
         json& mapping_src = data_block_content.at("records");
         json mapping_dest = json::array();
 
-        for (size_t cnt = 0; cnt < ret.first; ++cnt)
+        for (size_t cnt = 0; cnt < num_records; ++cnt)
             current_mapping->map(mapping_src[cnt], mapping_dest[cnt]);
 
-        data_block_content.emplace("records", std::move(mapping_dest));
+        mapping_src = std::move(mapping_dest);
     }
 
     if (debug)
-        loginf << "ASTERIXParser: decodeDataBlock: done num records " << ret.first << " errors "
-               << ret.second << logendl;
+        loginf << "ASTERIXParser: decodeDataBlock: done num records " << num_records << " errors "
+               << num_errors << logendl;
 
-    return ret;
+    return std::pair<size_t, size_t>{num_records, num_errors};
 }
 
 #if USE_OPENSSL

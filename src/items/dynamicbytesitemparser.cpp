@@ -1,23 +1,24 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "dynamicbytesitemparser.h"
 
 #include "logger.h"
+#include "traced_assert.h"
 
 using namespace std;
 using namespace nlohmann;
@@ -28,7 +29,7 @@ DynamicBytesItemParser::DynamicBytesItemParser(const nlohmann::json& item_defini
                                                const std::string& long_name_prefix)
     : ItemParserBase(item_definition, long_name_prefix)
 {
-    assert(type_ == "dynamic_bytes");
+    traced_assert(type_ == "dynamic_bytes");
 
     if (!item_definition.contains("length_variable"))
         throw runtime_error("dynamic bytes item '" + name_ + "' parsing without length variable");
@@ -77,7 +78,7 @@ size_t DynamicBytesItemParser::parseItem(const char* data, size_t index, size_t 
                                 std::to_string(current_parsed_bytes));
         }
 
-        assert(length >= current_parsed_bytes);
+        traced_assert(length >= current_parsed_bytes);
 
         if (debug)
             loginf << "parsing dynamic bytes item '" << name_ << "' substracting previous "
@@ -99,15 +100,27 @@ size_t DynamicBytesItemParser::parseItem(const char* data, size_t index, size_t 
         loginf << "parsing dynamic bytes item '" + name_ + "' index " << index << " length "
                << length << logendl;
 
-    assert(!target.contains(name_));
+    //traced_assert(!target.contains(name_));  // hot path — O(N) json lookup per field
 
-    target.emplace(name_, json::object({{"index", index}, {"length", length}}));
+    writeValue(target, json::object({{"index", index}, {"length", length}}));
 
     if (debug)
         loginf << "parsed dynamic bytes item '" + name_ + "' index " << index << " length "
                << length << logendl;
 
     return length;
+}
+
+size_t DynamicBytesItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                          size_t max_size, bool debug)
+{
+    throw runtime_error("dynamic bytes item '" + name_ + "' encoding not supported "
+                        "(used only at data block level, not record level)");
+}
+
+void DynamicBytesItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    callback(this, long_name_);
 }
 
 }  // namespace jASTERIX

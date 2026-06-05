@@ -1,18 +1,18 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "frameparser.h"
@@ -24,6 +24,7 @@
 #include "jasterix.h"
 #include "logger.h"
 #include "string_conv.h"
+#include "traced_assert.h"
 
 using namespace std;
 using namespace nlohmann;
@@ -53,7 +54,7 @@ FrameParser::FrameParser(const json& framing_definition, ASTERIXParser& asterix_
                        << logendl;
 
             item = ItemParserBase::createItemParser(data_item_it, "");
-            assert(item);
+            traced_assert(item);
             file_header_items_.push_back(std::unique_ptr<ItemParserBase>{item});
         }
 
@@ -74,7 +75,7 @@ FrameParser::FrameParser(const json& framing_definition, ASTERIXParser& asterix_
             loginf << "frame parser constructing frame item '" << item_name << "'" << logendl;
 
         item = ItemParserBase::createItemParser(data_item_it, "");
-        assert(item);
+        traced_assert(item);
         frame_items_.push_back(std::unique_ptr<ItemParserBase>{item});
     }
 }
@@ -82,10 +83,10 @@ FrameParser::FrameParser(const json& framing_definition, ASTERIXParser& asterix_
 size_t FrameParser::parseHeader(const char* data, size_t index, size_t total_size, json& target,
                                 bool debug)
 {
-    assert(data);
-    assert(total_size);
-    assert(index < total_size);
-    // assert (target != nullptr);
+    traced_assert(data);
+    traced_assert(total_size);
+    traced_assert(index < total_size);
+    // traced_assert(target != nullptr);
 
     size_t parsed_bytes{0};
 
@@ -98,17 +99,18 @@ size_t FrameParser::parseHeader(const char* data, size_t index, size_t total_siz
     return parsed_bytes;
 }
 
-std::tuple<size_t, size_t, bool> FrameParser::findFrames(const char* data, size_t index,
+// parsed bytes, num frames, done flag, error flag
+std::tuple<size_t, size_t, bool, bool> FrameParser::findFrames(const char* data, size_t index,
                                                          size_t total_size, nlohmann::json* target,
                                                          bool debug)
 {
-    assert(data);
-    assert(total_size);
-    assert(index < total_size);
-    assert(target);
+    traced_assert(data);
+    traced_assert(total_size);
+    traced_assert(index < total_size);
+    traced_assert(target);
 
     if (has_file_header_items_)
-        assert(target != nullptr);
+        traced_assert(target != nullptr);
 
     size_t parsed_bytes_sum{0};
     size_t parsed_bytes_frame{0};
@@ -123,6 +125,7 @@ std::tuple<size_t, size_t, bool> FrameParser::findFrames(const char* data, size_
 
     bool hit_frame_limit{false};
     bool hit_frame_chunk_limit{false};
+    bool error_flag{false};
 
     while (index + parsed_bytes_sum < total_size)
     {
@@ -153,19 +156,30 @@ std::tuple<size_t, size_t, bool> FrameParser::findFrames(const char* data, size_
         }
 
         parsed_bytes_frame = 0;
+        nlohmann::json& current_frame = j_frames[chunk_frames_cnt];
         for (auto& j_item : frame_items_)
         {
+            if (index + parsed_bytes_sum >= total_size)
+            {
+                logerr << "unexpected quit at index " << index + parsed_bytes_sum << " frame pb "
+                       << parsed_bytes_frame << " cnt " << chunk_frames_cnt << logendl;
+                error_flag = true; // too long
+                break;
+            }
+
             if (debug)
                 loginf << "found frame item at index " << index + parsed_bytes_sum << " frame pb "
                        << parsed_bytes_frame << " cnt " << chunk_frames_cnt << logendl;
 
+            assert (index + parsed_bytes_sum < total_size);
+
             parsed_bytes =
                 j_item->parseItem(data, index + parsed_bytes_sum, total_size - parsed_bytes_sum,
-                                  parsed_bytes_frame, total_size, j_frames[chunk_frames_cnt], debug);
-            j_frames[chunk_frames_cnt]["cnt"] = chunk_frames_cnt;
+                                  parsed_bytes_frame, total_size, current_frame, debug);
             parsed_bytes_frame += parsed_bytes;
             parsed_bytes_sum += parsed_bytes;
         }
+        current_frame["cnt"] = chunk_frames_cnt;
         //        loginf << "UGA FP FOUND '" << j_frames[chunk_frames_cnt].dump(4) << "'" <<
         //        logendl;
 
@@ -173,22 +187,23 @@ std::tuple<size_t, size_t, bool> FrameParser::findFrames(const char* data, size_
         ++sum_frames_cnt_;
     }
 
-    return std::make_tuple(parsed_bytes_sum, chunk_frames_cnt,
-                           hit_frame_limit ? true : !hit_frame_chunk_limit);
+    bool done_flag = hit_frame_limit ? true : !hit_frame_chunk_limit;
     // done if frame limit hit, if not -> done if frame chunk limit not hit
+
+    return std::make_tuple(parsed_bytes_sum, chunk_frames_cnt, done_flag, error_flag);
 }
 
 std::pair<size_t, size_t> FrameParser::decodeFrames(const char* data, size_t total_size, json* target, bool debug)
 {
-    assert(data);
-    assert(target != nullptr);
+    traced_assert(data);
+    traced_assert(target != nullptr);
 
     //    loginf << "FrameParser: decodeFrames" << logendl;
 
     std::pair<size_t, size_t> ret{0, 0};
     nlohmann::json& j_frames = target->at("frames");
 
-    if (debug || single_thread)  // switch to single thread in debug
+    if (debug || single_thread || asterix_parser_.flatMode())  // single thread in debug or flat mode
     {
         std::pair<size_t, size_t> tmp{0, 0};
 
@@ -263,7 +278,7 @@ std::pair<size_t, size_t> FrameParser::decodeFrame(const char* data, size_t tota
 
     bool error = std::get<2>(db_ret);  // error flag
 
-    assert(std::get<3>(db_ret));  // done flag
+    traced_assert(std::get<3>(db_ret));  // done flag
 
     if (!frame_content.contains("data_blocks"))
         throw runtime_error("frame parser scoped frames do not contain data blocks");

@@ -1,18 +1,18 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "catch.hpp"
@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat021_026_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat021_026_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                           size_t num_records, size_t num_errors)
 {
     loginf << "cat021 test: decoded " << num_frames << " frames, " << num_records << " records, "
@@ -162,11 +162,7 @@ void test_cat021_026_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     // 11111011 10000001 00010011 10000000
 
     loginf << "cat021 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 4 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1,1,1,1,1,0,1,1, 1,0,0,0,0,0,0,1,
-                               0,0,0,1,0,0,1,1, 1,0,0,0,0,0,0,0}));
 
     //    ;  I021/010: =0x 00 05
     //    ;  Data Source Identifier: 0x0005 (SAC=0; SIC=5)

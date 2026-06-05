@@ -1,22 +1,23 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "edition.h"
 #include "record.h"
+#include "traced_assert.h"
 
 namespace jASTERIX
 {
@@ -36,8 +37,14 @@ std::shared_ptr<Record> Edition::record() const { return record_; }
 
 void Edition::addInfo (const std::string& edition, CategoryItemInfo& info)
 {
-    assert (record_);
+    traced_assert(record_);
     record_->addInfo(edition, info);
+}
+
+void Edition::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    traced_assert(record_);
+    record_->setupColumnWriters(callback);
 }
 
 }  // namespace jASTERIX

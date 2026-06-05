@@ -1,23 +1,24 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "extendableitemparser.h"
 
 #include "logger.h"
+#include "traced_assert.h"
 
 using namespace std;
 using namespace nlohmann;
@@ -27,7 +28,7 @@ namespace jASTERIX
 ExtendableItemParser::ExtendableItemParser(const nlohmann::json& item_definition, const std::string& long_name_prefix)
     : ItemParserBase(item_definition, long_name_prefix)
 {
-    assert(type_ == "extendable");
+    traced_assert(type_ == "extendable");
 
     if (!item_definition.contains("items"))
         throw runtime_error("parsing extendable item '" + name_ + "' without items");
@@ -45,7 +46,7 @@ ExtendableItemParser::ExtendableItemParser(const nlohmann::json& item_definition
     {
         item_name = data_item_it.at("name");
         item = ItemParserBase::createItemParser(data_item_it, long_name_); // leave out own name
-        assert(item);
+        traced_assert(item);
         items_.push_back(std::unique_ptr<ItemParserBase>{item});
     }
 }
@@ -67,27 +68,65 @@ size_t ExtendableItemParser::parseItem(const char* data, size_t index, size_t si
     unsigned int extend = 1;
     unsigned int cnt = 0;
 
-    assert(!target.contains(name_));
-    target[name_] = json::array();
-    json& j_data = target.at(name_);
-
-    while (extend)
+    if (column_target_)
     {
-        for (auto& data_item_it : items_)
+        json arr = json::array();
+
+        while (extend)
         {
+            if (index + parsed_bytes >= total_size)
+                throw runtime_error("ExtendableItemParser '" + name_ + "': at index " +
+                    to_string(index + parsed_bytes) + " exceeds total_size " + to_string(total_size));
+
+            json elem = json::object();
+            for (auto& data_item_it : items_)
+            {
+                if (debug)
+                    loginf << "parsing extendable item '" << name_ << "' data item '"
+                           << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
+                           << cnt << logendl;
+
+                parsed_bytes += data_item_it->parseItem(
+                            data, index + parsed_bytes, size, parsed_bytes, total_size, elem, debug);
+            }
+            arr.push_back(std::move(elem));
+
+            extend = static_cast<unsigned char>(data[index + parsed_bytes - 1]) & 0x01;
+
             if (debug)
-                loginf << "parsing extendable item '" << name_ << "' data item '"
-                       << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
-                       << cnt << logendl;
+                loginf << "parsing extendable item '" << name_ << "' extend = " << extend << logendl;
 
-            parsed_bytes += data_item_it->parseItem(
-                        data, index + parsed_bytes, size, parsed_bytes, total_size, j_data[cnt], debug);
+            ++cnt;
+        }
 
-            if (debug && !j_data.at(cnt).contains("extend"))
-                throw runtime_error("parsing extendable item '" + name_ +
-                                    "' without extend information");
+        (*column_target_)[*record_index_] = std::move(arr);
+    }
+    else
+    {
+        json& j_data = target[name_] = json::array();
 
-            extend = j_data.at(cnt).at("extend");
+        while (extend)
+        {
+            if (index + parsed_bytes >= total_size)
+                throw runtime_error("ExtendableItemParser '" + name_ + "': at index " +
+                    to_string(index + parsed_bytes) + " exceeds total_size " + to_string(total_size));
+
+            for (auto& data_item_it : items_)
+            {
+                if (debug)
+                    loginf << "parsing extendable item '" << name_ << "' data item '"
+                           << data_item_it->name() << "' index " << index + parsed_bytes << " cnt "
+                           << cnt << logendl;
+
+                json& current = j_data[cnt];
+                parsed_bytes += data_item_it->parseItem(
+                            data, index + parsed_bytes, size, parsed_bytes, total_size, current, debug);
+            }
+
+            extend = static_cast<unsigned char>(data[index + parsed_bytes - 1]) & 0x01;
+
+            if (debug)
+                loginf << "parsing extendable item '" << name_ << "' extend = " << extend << logendl;
 
             ++cnt;
         }
@@ -96,10 +135,45 @@ size_t ExtendableItemParser::parseItem(const char* data, size_t index, size_t si
     return parsed_bytes;
 }
 
+size_t ExtendableItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                        size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding extendable item '" << name_ << "'" << logendl;
+
+    const json& j_array = source.at(name_);
+    size_t written_bytes{0};
+
+    for (size_t cnt = 0; cnt < j_array.size(); ++cnt)
+    {
+        const json& element = j_array[cnt];
+
+        for (auto& data_item_it : items_)
+        {
+            written_bytes += data_item_it->encodeItem(element, target + written_bytes,
+                                                      max_size - written_bytes, debug);
+        }
+
+        // Set extend bit (bit 0 of last byte): 1 for all except last element
+        if (cnt < j_array.size() - 1)
+            target[written_bytes - 1] |= 0x01;   // extend = 1
+        else
+            target[written_bytes - 1] &= ~0x01;  // extend = 0
+    }
+
+    return written_bytes;
+}
+
 void ExtendableItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : items_)
         item_it->addInfo(edition, info);
+}
+
+void ExtendableItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    callback(this, long_name_);
+    // Do NOT recurse into children — they write structured into each extension element
 }
 
 }  // namespace jASTERIX

@@ -1,24 +1,26 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "record.h"
+#include "extendablebitsitemparser.h"
 
 #include "logger.h"
 #include "string_conv.h"
+#include "traced_assert.h"
 
 using namespace std;
 using namespace nlohmann;
@@ -27,7 +29,7 @@ namespace jASTERIX
 {
 Record::Record(const nlohmann::json& item_definition) : ItemParserBase(item_definition)
 {
-    assert(type_ == "record");
+    traced_assert(type_ == "record");
 
     // fspec
 
@@ -40,7 +42,7 @@ Record::Record(const nlohmann::json& item_definition) : ItemParserBase(item_defi
         throw runtime_error("record item '" + name_ + "' field specification is not an object");
 
     field_specification_.reset(ItemParserBase::createItemParser(field_specification, ""));
-    assert(field_specification_);
+    traced_assert(field_specification_);
 
     // uap
 
@@ -54,6 +56,8 @@ Record::Record(const nlohmann::json& item_definition) : ItemParserBase(item_defi
 
     for (const auto& uap_item : uap)
         uap_names_.push_back(uap_item);
+
+    max_fspec_bits_ = uap.size();
 
     // conditional uaps
 
@@ -81,6 +85,8 @@ Record::Record(const nlohmann::json& item_definition) : ItemParserBase(item_defi
             throw runtime_error("record item '" + name_ +
                                 "' conditional uap values is not an object");
 
+        unsigned int max_cond_fspec_bits{0};
+
         for (auto uap_conditional_value = conditional_uaps_values.begin();
              uap_conditional_value != conditional_uaps_values.end(); ++uap_conditional_value)
         {
@@ -98,7 +104,11 @@ Record::Record(const nlohmann::json& item_definition) : ItemParserBase(item_defi
             std::vector<std::string> value_uap = uap_conditional_value.value();
 
             conditional_uap_names_[value_key] = value_uap;
+
+            max_cond_fspec_bits = std::max(max_cond_fspec_bits, (unsigned int) value_uap.size());
         }
+
+        max_fspec_bits_ += max_cond_fspec_bits;
     }
 
     // items
@@ -121,13 +131,40 @@ Record::Record(const nlohmann::json& item_definition) : ItemParserBase(item_defi
 
         item_number = data_item_it.at("number");
         item = ItemParserBase::createItemParser(data_item_it, "");
-        assert(item);
+        traced_assert(item);
 
         if (items_.count(item_number) != 0)
             throw runtime_error("record item '" + name_ + "' item number '" + item_number +
                                 "' used multiple times");
 
         items_[item_number] = std::unique_ptr<ItemParserBase>{item};
+    }
+
+    // Build flat lookup vectors for O(1) UAP item access during parsing
+    for (const auto& uap_name : uap_names_)
+    {
+        if (uap_name == "FX" || uap_name == "-" || uap_name == "SP" || uap_name == "RE")
+            uap_items_.push_back(nullptr);
+        else
+        {
+            auto it = items_.find(uap_name);
+            uap_items_.push_back(it != items_.end() ? it->second.get() : nullptr);
+        }
+    }
+
+    for (auto& [key, cond_names] : conditional_uap_names_)
+    {
+        auto& cond_items = conditional_uap_items_[key];
+        for (const auto& uap_name : cond_names)
+        {
+            if (uap_name == "FX" || uap_name == "-" || uap_name == "SP" || uap_name == "RE")
+                cond_items.push_back(nullptr);
+            else
+            {
+                auto it = items_.find(uap_name);
+                cond_items.push_back(it != items_.end() ? it->second.get() : nullptr);
+            }
+        }
     }
 }
 
@@ -136,24 +173,30 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
 {
     if (debug)
         loginf << "parsing record item '" << name_ << "' with index " << index << " size " << size
-               << " current parsed bytes " << current_parsed_bytes << logendl;
+               << " current parsed bytes " << current_parsed_bytes
+               << " total_size " << total_size << logendl;
 
     size_t parsed_bytes{0};
 
     if (debug)
         loginf << "parsing record item '" + name_ + "' field specification" << logendl;
 
-    parsed_bytes = field_specification_->parseItem(data, index + parsed_bytes, size, parsed_bytes, total_size,
-                                                   target, debug);
+    if (index + parsed_bytes >= total_size)
+    {
+        logerr << "unexpected record item at index " << index + parsed_bytes
+               << " total_size " << total_size << ", quitting";
+        return parsed_bytes;
+    }
 
-    if (!target.contains("FSPEC"))
-        throw runtime_error("record item '" + name_ + "' FSPEC not found");
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(field_specification_.get());
+    std::vector<bool> fspec_bits;
+    parsed_bytes = fspec_parser->parseItemBits(data, index + parsed_bytes, size, parsed_bytes,
+                                               total_size, fspec_bits, debug);
 
-    std::vector<bool> fspec_bits = target.at("FSPEC");
-
-    if (!has_conditional_uap_ && fspec_bits.size() > uap_names_.size())
+    if (fspec_bits.size() > max_fspec_bits_)
         throw runtime_error("record item '" + name_ +
-                            "' has more FSPEC bits than defined uap items");
+                            "' has more FSPEC bits ("+to_string(fspec_bits.size())
+                            +") than defined uap items ("+to_string(max_fspec_bits_)+")");
 
     if (debug)
         loginf << "parsing record item '" + name_ + "' data items" << logendl;
@@ -164,49 +207,47 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
     bool special_purpose_field_present{false};
     bool reserved_expansion_field_present{false};
 
-    for (const auto& item_name : uap_names_)  // parse static uap items
+    size_t uap_size = uap_items_.size();
+    for (; uap_cnt < num_fspec_bits && uap_cnt < uap_size; ++uap_cnt)
     {
         if (debug)
-            loginf << " item name '" + item_name + "'" << logendl;
+            loginf << " item name '" + uap_names_[uap_cnt] + "'" << logendl;
 
-        if (uap_cnt >= num_fspec_bits)
-            break;
+        if (!fspec_bits[uap_cnt])
+            continue;
 
-        if (fspec_bits.at(uap_cnt))
+        ItemParserBase* item_parser = uap_items_[uap_cnt];
+        if (!item_parser)
         {
-            uap_cnt++;
-
-            if (item_name == "FX")  // extension into next byte
-                continue;
-
-            if (item_name == "-")  // bit not used
-                continue;
-
-            if (item_name == "SP")  // special purpose field
-            {
+            // FX, -, SP, or RE entry
+            const auto& item_name = uap_names_[uap_cnt];
+            if (item_name == "SP")
                 special_purpose_field_present = true;
-                continue;
-            }
-
-            if (item_name == "RE")  // reserved expansion field
-            {
+            else if (item_name == "RE")
                 reserved_expansion_field_present = true;
-                continue;
-            }
-
-            if (debug)
-                loginf << "parsing record item '" << name_ << "' data item '" << item_name
-                       << "' index " << index + parsed_bytes << logendl;
-
-            if (items_.count(item_name) != 1)
-                throw runtime_error("record item '" + name_ + "' references undefined item '" +
-                                    item_name + "'");
-
-            parsed_bytes += items_.at(item_name)->parseItem(data, index + parsed_bytes, size,
-                                                            parsed_bytes, total_size, target, debug);
+            continue;
         }
-        else
-            uap_cnt++;
+
+        if (debug)
+            loginf << "parsing record item '" << name_ << "' data item '" << uap_names_[uap_cnt]
+                   << "' index " << index + parsed_bytes << logendl;
+
+        if (index + parsed_bytes >= total_size)
+        {
+            logerr << "unexpected record item at index " << index + parsed_bytes
+                   << " total_size " << total_size << ", quitting";
+            return parsed_bytes;
+        }
+
+        parsed_bytes += item_parser->parseItem(data, index + parsed_bytes, size,
+                                               parsed_bytes, total_size, target, debug);
+
+        if (parsed_bytes > size)
+        {
+            logerr << "record '" << name_ << "' parsed size (" << parsed_bytes
+                   << ") overrun data block size (" << size << ")" << logendl;
+            break;
+        }
     }
 
     if (has_conditional_uap_)
@@ -232,52 +273,58 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
                    << json_value << " found" << logendl;
 
         const auto& current_uap_names = conditional_uap_names_.at(json_value);
+        const auto& current_uap_items = conditional_uap_items_.at(json_value);
+        size_t cond_uap_size = current_uap_items.size();
 
-        for (const auto& item_name : current_uap_names)  // parse dynamic uap items
+        for (size_t cond_idx = 0; uap_cnt < num_fspec_bits && cond_idx < cond_uap_size; ++uap_cnt, ++cond_idx)
         {
-            if (uap_cnt >= num_fspec_bits)
+            if (debug)
             {
-                if (debug)
+                loginf << " conditional item name '" + current_uap_names[cond_idx] + "'" << logendl;
+
+                if (uap_cnt >= num_fspec_bits)
+                {
                     loginf << "conditional uap data item count break, uap_cnt " << uap_cnt
                            << " num_fspec_bits " << num_fspec_bits << logendl;
+                    break;
+                }
+            }
+
+            if (!fspec_bits[uap_cnt])
+                continue;
+
+            ItemParserBase* item_parser = current_uap_items[cond_idx];
+            if (!item_parser)
+            {
+                // FX, -, SP, or RE entry
+                const auto& item_name = current_uap_names[cond_idx];
+                if (item_name == "SP")
+                    special_purpose_field_present = true;
+                else if (item_name == "RE")
+                    reserved_expansion_field_present = true;
+                continue;
+            }
+
+            if (debug)
+                loginf << "parsing record item '" << name_ << "' data item '"
+                       << current_uap_names[cond_idx] << "' index " << index + parsed_bytes << logendl;
+
+            if (index + parsed_bytes >= total_size)
+            {
+                logerr << "unexpected uap record item at index " << index + parsed_bytes
+                       << " total_size " << total_size << ", quitting";
+                return parsed_bytes;
+            }
+
+            parsed_bytes += item_parser->parseItem(
+                data, index + parsed_bytes, size, parsed_bytes, total_size, target, debug);
+
+            if (parsed_bytes > size)
+            {
+                logerr << "record '" << name_ << "' parsed size (" << parsed_bytes
+                       << ") overrun data block size (" << size << ")" << logendl;
                 break;
             }
-
-            if (fspec_bits.at(uap_cnt))
-            {
-                uap_cnt++;
-
-                if (item_name == "FX")  // extension into next byte
-                    continue;
-
-                if (item_name == "-")  // bit not used
-                    continue;
-
-                if (item_name == "SP")  // special purpose field
-                {
-                    special_purpose_field_present = true;
-                    continue;
-                }
-
-                if (item_name == "RE")  // reserved expansion field
-                {
-                    reserved_expansion_field_present = true;
-                    continue;
-                }
-
-                if (debug)
-                    loginf << "parsing record item '" << name_ << "' data item '"
-                           << item_name << "' index " << index + parsed_bytes << logendl;
-
-                if (items_.count(item_name) != 1)
-                    throw runtime_error("record item '" + name_ +
-                                        "' references undefined item '" + item_name + "'");
-
-                parsed_bytes += items_.at(item_name)->parseItem(
-                    data, index + parsed_bytes, size, parsed_bytes, total_size, target, debug);
-            }
-            else
-                uap_cnt++;
         }
     }
 
@@ -303,7 +350,14 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
                 }
                 else
                 {
-                    assert(re_bytes >= 1);
+                    traced_assert(re_bytes >= 1);
+
+                    if (index + parsed_bytes >= total_size)
+                    {
+                        logerr << "unexpected record ref item at index " << index + parsed_bytes
+                               << " total_size " << total_size << ", quitting";
+                        return parsed_bytes;
+                    }
 
                     size_t ref_bytes =
                         ref_->parseItem(data, index + parsed_bytes, re_bytes, 0, total_size, target["REF"], debug);
@@ -335,6 +389,13 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
                 if (index + parsed_bytes + re_bytes > total_size)
                     throw std::runtime_error("reserved expansion field longer than max size");
 
+                if (index + parsed_bytes >= total_size)
+                {
+                    logerr << "unexpected record item ref at index " << index + parsed_bytes
+                           << " total_size " << total_size << ", quitting";
+                    return parsed_bytes;
+                }
+
                 target["REF"] = binary2hex((const unsigned char*)&data[index + parsed_bytes], re_bytes);
 
                 parsed_bytes += re_bytes;
@@ -364,7 +425,14 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
                 }
                 else
                 {
-                    assert(re_bytes >= 1);
+                    traced_assert(re_bytes >= 1);
+
+                    if (index + parsed_bytes >= total_size)
+                    {
+                        logerr << "unexpected record spf item at index " << index + parsed_bytes
+                               << " total_size " << total_size << ", quitting";
+                        return parsed_bytes;
+                    }
 
                     size_t ref_bytes = spf_->parseItem(
                         data, index + parsed_bytes, re_bytes, 0, total_size, target["SPF"], debug);
@@ -395,6 +463,13 @@ size_t Record::parseItem(const char* data, size_t index, size_t size, size_t cur
 
                 if (index + parsed_bytes + re_bytes > total_size)
                     throw std::runtime_error("special purpose field longer than max size");
+
+                if (index + parsed_bytes >= total_size)
+                {
+                    logerr << "unexpected record spf item at index " << index + parsed_bytes
+                           << " total_size " << total_size << ", quitting";
+                    return parsed_bytes;
+                }
 
                 target["SPF"] = binary2hex((const unsigned char*)&data[index + parsed_bytes], re_bytes);
                 parsed_bytes += re_bytes;
@@ -440,20 +515,37 @@ std::string Record::getValue(const nlohmann::json& container, bool debug)
 {
     const nlohmann::json* val_ptr = &container;
 
-    for (const std::string& sub_key : conditional_uaps_sub_keys_)
+    if (column_mode_)
     {
-        if (debug)
-            loginf << "Record: getValue: sub_key '" << sub_key << "' json '" << val_ptr->dump(4) << "'" << logendl;
+        // In column mode, containers skip nesting — leaves write flat to target.
+        // Look up the last sub-key directly (the leaf name).
+        const auto& leaf_key = conditional_uaps_sub_keys_.back();
 
-        if (!val_ptr->contains(sub_key))
+        if (debug)
+            loginf << "Record: getValue (column_mode): leaf_key '" << leaf_key << "'" << logendl;
+
+        if (!container.contains(leaf_key))
+            return "";
+
+        val_ptr = &container.at(leaf_key);
+    }
+    else
+    {
+        for (const std::string& sub_key : conditional_uaps_sub_keys_)
         {
             if (debug)
-                loginf << "Record: getValue: sub_key '" << sub_key << "' not found" << logendl;
+                loginf << "Record: getValue: sub_key '" << sub_key << "' json '" << val_ptr->dump(4) << "'" << logendl;
 
-            return "";
+            if (!val_ptr->contains(sub_key))
+            {
+                if (debug)
+                    loginf << "Record: getValue: sub_key '" << sub_key << "' not found" << logendl;
+
+                return "";
+            }
+
+            val_ptr = &(*val_ptr)[sub_key];
         }
-
-        val_ptr = &(*val_ptr)[sub_key];
     }
 
     std::string json_value;
@@ -481,10 +573,250 @@ std::shared_ptr<SpecialPurposeField> Record::spf() const { return spf_; }
 
 void Record::setSpf(const std::shared_ptr<SpecialPurposeField>& spf) { spf_ = spf; }
 
+size_t Record::encodeItem(const nlohmann::json& source, char* target,
+                          size_t max_size, bool debug)
+{
+    return encodeRecord(source, target, max_size, debug);
+}
+
+size_t Record::encodeRecord(const nlohmann::json& record_json, char* target,
+                            size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding record '" << name_ << "'" << logendl;
+
+    // Reconstruct FSPEC from which data items are present in the JSON
+    // First pass: determine which UAP positions have data
+    std::vector<bool> fspec_bits;
+
+    // Collect all UAP names (base + conditional)
+    std::vector<const std::string*> all_uap_names;
+    std::vector<ItemParserBase*> all_uap_items;
+
+    for (size_t i = 0; i < uap_names_.size(); ++i)
+    {
+        all_uap_names.push_back(&uap_names_[i]);
+        all_uap_items.push_back(uap_items_[i]);
+    }
+
+    const std::vector<std::string>* cond_names_ptr = nullptr;
+    const std::vector<ItemParserBase*>* cond_items_ptr = nullptr;
+
+    if (has_conditional_uap_)
+    {
+        std::string json_value = getValue(record_json, debug);
+        if (conditional_uap_names_.count(json_value))
+        {
+            cond_names_ptr = &conditional_uap_names_.at(json_value);
+            cond_items_ptr = &conditional_uap_items_.at(json_value);
+            for (size_t i = 0; i < cond_names_ptr->size(); ++i)
+            {
+                all_uap_names.push_back(&(*cond_names_ptr)[i]);
+                all_uap_items.push_back((*cond_items_ptr)[i]);
+            }
+        }
+    }
+
+    // Build raw FSPEC bits (without FX bits — those are at positions 7, 15, 23...)
+    size_t total_uap = all_uap_names.size();
+    fspec_bits.resize(total_uap, false);
+
+    for (size_t i = 0; i < total_uap; ++i)
+    {
+        const std::string& item_name = *all_uap_names[i];
+        if (item_name == "FX")
+            continue;  // FX bits computed below
+        else if (item_name == "-")
+            continue;  // spare bit
+        else if (item_name == "SP")
+            fspec_bits[i] = record_json.contains("SPF");
+        else if (item_name == "RE")
+            fspec_bits[i] = record_json.contains("REF");
+        else
+            fspec_bits[i] = (all_uap_items[i] != nullptr && record_json.contains(item_name));
+    }
+
+    // Determine how many FSPEC bytes needed and set FX bits
+    // FX bit is at position 7, 15, 23... (last bit of each 8-bit group)
+    // Pad to full bytes
+    size_t num_bytes = (total_uap + 7) / 8;
+    fspec_bits.resize(num_bytes * 8, false);
+
+    // Find last byte that has any data bit set
+    size_t last_needed_byte = 0;
+    for (size_t byte_idx = 0; byte_idx < num_bytes; ++byte_idx)
+    {
+        for (size_t bit = 0; bit < 7; ++bit)  // skip FX position (bit 7 of group)
+        {
+            if (fspec_bits[byte_idx * 8 + bit])
+            {
+                last_needed_byte = byte_idx;
+                break;
+            }
+        }
+    }
+
+    // Set FX bits: byte N's FX = 1 if we need byte N+1
+    for (size_t byte_idx = 0; byte_idx < last_needed_byte; ++byte_idx)
+        fspec_bits[byte_idx * 8 + 7] = true;   // FX = 1 (extend)
+    // last_needed_byte's FX = 0 (no more extension)
+    fspec_bits[last_needed_byte * 8 + 7] = false;
+
+    // Trim to actual size
+    fspec_bits.resize((last_needed_byte + 1) * 8);
+
+    // Encode FSPEC
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(field_specification_.get());
+    size_t written_bytes = fspec_parser->encodeBits(fspec_bits, target, max_size, debug);
+
+    if (debug)
+        loginf << "encoding record '" << name_ << "' FSPEC " << written_bytes << " bytes" << logendl;
+
+    // Encode data items
+    size_t uap_cnt{0};
+    size_t num_fspec_bits_val = fspec_bits.size();
+
+    bool special_purpose_field_present{false};
+    bool reserved_expansion_field_present{false};
+
+    size_t uap_size = uap_items_.size();
+    for (; uap_cnt < num_fspec_bits_val && uap_cnt < uap_size; ++uap_cnt)
+    {
+        if (!fspec_bits[uap_cnt])
+            continue;
+
+        ItemParserBase* item_parser = uap_items_[uap_cnt];
+        if (!item_parser)
+        {
+            const auto& item_name = uap_names_[uap_cnt];
+            if (item_name == "SP")
+                special_purpose_field_present = true;
+            else if (item_name == "RE")
+                reserved_expansion_field_present = true;
+            continue;
+        }
+
+        if (debug)
+            loginf << "encoding record '" << name_ << "' data item '" << uap_names_[uap_cnt]
+                   << "'" << logendl;
+
+        written_bytes += item_parser->encodeItem(record_json, target + written_bytes,
+                                                 max_size - written_bytes, debug);
+    }
+
+    // Conditional UAP
+    if (has_conditional_uap_ && cond_names_ptr)
+    {
+        size_t cond_uap_size = cond_items_ptr->size();
+
+        for (size_t cond_idx = 0; uap_cnt < num_fspec_bits_val && cond_idx < cond_uap_size;
+             ++uap_cnt, ++cond_idx)
+        {
+            if (!fspec_bits[uap_cnt])
+                continue;
+
+            ItemParserBase* item_parser = (*cond_items_ptr)[cond_idx];
+            if (!item_parser)
+            {
+                const auto& item_name = (*cond_names_ptr)[cond_idx];
+                if (item_name == "SP")
+                    special_purpose_field_present = true;
+                else if (item_name == "RE")
+                    reserved_expansion_field_present = true;
+                continue;
+            }
+
+            if (debug)
+                loginf << "encoding record '" << name_ << "' conditional data item '"
+                       << (*cond_names_ptr)[cond_idx] << "'" << logendl;
+
+            written_bytes += item_parser->encodeItem(record_json, target + written_bytes,
+                                                     max_size - written_bytes, debug);
+        }
+    }
+
+    // Reserved Expansion Field
+    if (reserved_expansion_field_present && record_json.contains("REF"))
+    {
+        const json& ref_json = record_json.at("REF");
+
+        if (ref_ && ref_json.is_object())
+        {
+            // encode REF content into a temp buffer to measure length
+            char ref_buf[4096];
+            size_t ref_bytes = ref_->encodeItem(ref_json, ref_buf, sizeof(ref_buf), debug);
+
+            // write length byte (includes itself)
+            target[written_bytes] = static_cast<char>(ref_bytes + 1);
+            written_bytes += 1;
+
+            // copy REF content
+            memcpy(target + written_bytes, ref_buf, ref_bytes);
+            written_bytes += ref_bytes;
+        }
+        else if (ref_json.is_string())
+        {
+            // hex string fallback
+            std::string hex_str = ref_json.get<std::string>();
+            size_t ref_bytes = hex_str.size() / 2;
+
+            target[written_bytes] = static_cast<char>(ref_bytes + 1);
+            written_bytes += 1;
+
+            hex2bin(hex_str.c_str(), target + written_bytes);
+            written_bytes += ref_bytes;
+        }
+    }
+
+    // Special Purpose Field
+    if (special_purpose_field_present && record_json.contains("SPF"))
+    {
+        const json& spf_json = record_json.at("SPF");
+
+        if (spf_ && spf_json.is_object())
+        {
+            char spf_buf[4096];
+            size_t spf_bytes = spf_->encodeItem(spf_json, spf_buf, sizeof(spf_buf), debug);
+
+            target[written_bytes] = static_cast<char>(spf_bytes + 1);
+            written_bytes += 1;
+
+            memcpy(target + written_bytes, spf_buf, spf_bytes);
+            written_bytes += spf_bytes;
+        }
+        else if (spf_json.is_string())
+        {
+            std::string hex_str = spf_json.get<std::string>();
+            size_t spf_bytes = hex_str.size() / 2;
+
+            target[written_bytes] = static_cast<char>(spf_bytes + 1);
+            written_bytes += 1;
+
+            hex2bin(hex_str.c_str(), target + written_bytes);
+            written_bytes += spf_bytes;
+        }
+    }
+
+    if (debug)
+        loginf << "encoding record '" << name_ << "' done, " << written_bytes << " bytes"
+               << logendl;
+
+    return written_bytes;
+}
+
 void Record::addInfo (const std::string& edition, CategoryItemInfo& info) const
 {
     for (auto& item_it : items_)
         item_it.second->addInfo(edition, info);
+}
+
+void Record::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    column_mode_ = true;
+
+    // Walk all items (covers both base UAP and conditional UAP entries)
+    for (auto& [name, item] : items_)
+        item->setupColumnWriters(callback);
 }
 
 // bool Record::compareKey (const nlohmann::json& container, const std::string& value)

@@ -1,18 +1,18 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "catch.hpp"
@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat020_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat020_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                           size_t num_records, size_t num_errors)
 {
     loginf << "cat020 test: decoded " << num_frames << " frames, " << num_records << " records, "
@@ -295,11 +295,7 @@ void test_cat020_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     // 11111111111010010100011110000100
 
     loginf << "cat020 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 4 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1,
-                               0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0}));
 
     //    ;  I020/010: =0x 00 02
     //    ;  Data Source Identifier: 0x0002 (SAC=0; SIC=2)
@@ -319,7 +315,6 @@ void test_cat020_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("020").at("UAT") == 0);
     REQUIRE(record.at("020").at("DME") == 0);
     REQUIRE(record.at("020").at("OT") == 0);
-    REQUIRE(record.at("020").at("FX") == 1);
 
     REQUIRE(record.at("020").at("RAB") == 0);
     REQUIRE(record.at("020").at("SPI") == 0);
@@ -328,7 +323,6 @@ void test_cat020_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("020").at("CRT") == 0);
     REQUIRE(record.at("020").at("SIM") == 0);
     REQUIRE(record.at("020").at("TST") == 0);
-    REQUIRE(record.at("020").at("FX2") == 0);
 
     //    ;  I020/140: =0x 41 6f 5b
     //    ;  Time of Day: 0x416f5b (4288347; 09:18:22.711 UTC)
@@ -368,7 +362,6 @@ void test_cat020_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("170").at("CDM") == 3);
     REQUIRE(record.at("170").at("MAH") == 0);
     REQUIRE(record.at("170").at("STH") == 0);
-    REQUIRE(record.at("170").at("FX") == 0);
 
     //    ;  I020/070: =0x 2e 00
     //    ;  Mode 3/A Code: v=0; g=0; l=1; code=07000

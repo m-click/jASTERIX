@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat010_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat010_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                           size_t num_records, size_t num_errors)
 {
     loginf << "cat010 test: decoded " << num_frames << " frames, " << num_records << " records, "
@@ -181,11 +181,7 @@ void test_cat010_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    11110111 11110001 00001001 00010000
 
     loginf << "cat010 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 4 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1,
-                               0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0}));
 
     //    ;  I010/010: =0x 00 01
     //    ;  Data Source Identifier: 0x0001 (SAC=0; SIC=1)
@@ -211,14 +207,12 @@ void test_cat010_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("020").at("CHN") == 0);
     REQUIRE(record.at("020").at("GBS") == 0);
     REQUIRE(record.at("020").at("CRT") == 0);
-    REQUIRE(record.at("020").at("FX") == 1);
 
     REQUIRE(record.at("020").at("SIM") == 0);
     REQUIRE(record.at("020").at("TST") == 0);
     REQUIRE(record.at("020").at("RAB") == 0);
     REQUIRE(record.at("020").at("LOP") == 0);
     REQUIRE(record.at("020").at("TOT") == 0);
-    REQUIRE(record.at("020").at("FX2") == 0);
 
     //    ;  I010/040: =0x 30 3a 92
     //    ;  Measured Position: srg=1588 (0.857 nmi); azm=34499 (189.509 deg)
@@ -260,12 +254,10 @@ void test_cat010_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     REQUIRE(record.at("170").at("MAH") == 0);
     REQUIRE(record.at("170").at("TCC") == 0);
     REQUIRE(record.at("170").at("STH") == 1);
-    REQUIRE(record.at("170").at("FX") == 1);
 
     REQUIRE(record.at("170").at("TOM") == 3);
     REQUIRE(record.at("170").at("DOU") == 0);
     REQUIRE(record.at("170").at("MRS") == 0);
-    REQUIRE(record.at("170").at("FX2") == 1);
 
     REQUIRE(record.at("170").at("GHO") == 0);
 
@@ -273,7 +265,7 @@ void test_cat010_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    ;  Calculated Track Velocity: spd=4 (0.879 kts); hdg=48656 (267.275 deg)
 
     loginf << "cat010 test: 200" << logendl;
-    REQUIRE(approximatelyEqual(record.at("200").at("Ground Speed"), 2.44140625E-4, 10e-10));
+    REQUIRE(approximatelyEqual(record.at("200").at("Ground Speed"), 0.878906248, 10e-6));
     REQUIRE(approximatelyEqual(record.at("200").at("Track Angle"), 267.275390625, 10e-10));
 
     //    ;  I010/202: =0x ff fe 00 00
@@ -297,10 +289,8 @@ void test_cat010_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
 
     loginf << "cat010 test: 210" << logendl;
     REQUIRE(record.at("270").at("LENGTH") == 27.0);
-    REQUIRE(record.at("270").at("FX") == 1);
 
     REQUIRE(approximatelyEqual(record.at("270").at("ORIENTATION"), 267.1875, 10e-4));
-    REQUIRE(record.at("270").at("FX2") == 1);
 
     REQUIRE(record.at("270").at("WIDTH") == 40.0);
 }

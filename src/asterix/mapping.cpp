@@ -1,18 +1,18 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "mapping.h"
@@ -22,6 +22,7 @@
 #include "files.h"
 #include "logger.h"
 #include "string_conv.h"
+#include "traced_assert.h"
 
 namespace jASTERIX
 {
@@ -62,7 +63,7 @@ std::string Mapping::file() const { return file_; }
 
 void Mapping::map(nlohmann::json& src, nlohmann::json& dest)
 {
-    assert(src.is_object());
+    traced_assert(src.is_object());
     // loginf << "mapping: map";
     mapObject(definition_, src, dest);
 }
@@ -91,7 +92,7 @@ void Mapping::mapObject(nlohmann::json& object_definition, const nlohmann::json&
 
             if (src_value.is_object())
             {
-                assert(def_it.value().is_object());
+                traced_assert(def_it.value().is_object());
                 mapObject(def_it.value(), src_value, dest);  // iterate into sub-object
             }
             else
@@ -104,7 +105,7 @@ void Mapping::mapObject(nlohmann::json& object_definition, const nlohmann::json&
                     if (def_it.value().contains(src_value_str))  // skip if not defined
                     {
                         const json& src_val_mapped_obj = def_it.value()[src_value_str];
-                        assert(src_val_mapped_obj.is_object());
+                        traced_assert(src_val_mapped_obj.is_object());
 
                         for (auto dest_it = src_val_mapped_obj.begin();
                              dest_it != src_val_mapped_obj.end(); ++dest_it)

@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat004_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat004_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                           size_t num_records, size_t num_errors)
 {
     loginf << "cat004 test: decoded " << num_frames << " frames, " << num_records << " records, "
@@ -239,10 +239,7 @@ void test_cat004_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    11010010
 
     loginf << "cat004 test #1: fspec" << logendl;
-    REQUIRE(record1.at("FSPEC").size() == 1 * 8);
 
-    REQUIRE(record1.at("FSPEC") ==
-            std::vector<bool>({1, 1, 0, 1, 0, 0, 1, 0}));
 
     // ;  I004/010: =0x 00 01
     // ;  Data Source Identifier: 0x0001 (SAC=0; SIC=1)
@@ -300,11 +297,7 @@ void test_cat004_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    11011001 10000000
 
     loginf << "cat004 test #2: fspec" << logendl;
-    REQUIRE(record2.at("FSPEC").size() == 2 * 8);
 
-    REQUIRE(record2.at("FSPEC") ==
-            std::vector<bool>({1, 1, 0, 1, 1, 0, 0, 1,
-                               1, 0, 0, 0, 0, 0, 0, 0}));
 
     // ;  I004/010: =0x 00 01
     // ;  Data Source Identifier: 0x0001 (SAC=0; SIC=1)
@@ -360,11 +353,7 @@ void test_cat004_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    11011101 10100001 01000000
 
     loginf << "cat004 test #3: fspec" << logendl;
-    REQUIRE(record3.at("FSPEC").size() == 3 * 8);
 
-    REQUIRE(record3.at("FSPEC") ==
-            std::vector<bool>({1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1,
-									    0, 1, 0, 0, 0, 0, 0, 0}));
 
     // ;  I004/010: =0x 00 01
     // ;  Data Source Identifier: 0x0001 (SAC=0; SIC=1)

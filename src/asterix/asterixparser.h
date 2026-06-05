@@ -1,22 +1,21 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ASTERIXPARSER_H
-#define ASTERIXPARSER_H
+ #pragma once
 
 #include <tuple>
 
@@ -51,11 +50,25 @@ class ASTERIXParser
     //    nlohmann::json& target,
     //                            bool debug);
 
+    void setFlatRecordIndices(std::map<unsigned int, size_t>* indices);
+    void setFlatHashColumns(std::map<unsigned int, nlohmann::json*>* columns);
+    void setFlatData(std::map<unsigned int, nlohmann::json>* data);
+    bool flatMode() const { return flat_record_indices_ != nullptr; }
+
   private:
     std::string data_block_name_;
     std::vector<std::unique_ptr<ItemParserBase>> data_block_items_;
     std::map<unsigned int, std::shared_ptr<Record>> records_;
     std::map<unsigned int, std::shared_ptr<Mapping>> mappings_;
+
+    std::map<unsigned int, size_t>* flat_record_indices_{nullptr};
+    std::map<unsigned int, nlohmann::json*>* flat_hash_columns_{nullptr};
+    std::map<unsigned int, nlohmann::json>* flat_data_{nullptr};
+
+    // CAT002 time tracking per data source (key: "SAC/SIC").
+    // Used in flat mode to reconstruct CAT001 truncated time.
+    std::map<std::string, double> cat002_last_tod_;         // full Time of Day
+    std::map<std::string, double> cat002_last_tod_period_;  // floor(tod/512)*512
 
 #if USE_OPENSSL
     void calculateARTASMD5Hash(const char* data, size_t length, nlohmann::json& target);
@@ -63,4 +76,4 @@ class ASTERIXParser
 };
 
 }  // namespace jASTERIX
-#endif  // ASTERIXPARSER_H
+

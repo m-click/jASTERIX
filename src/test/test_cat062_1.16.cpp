@@ -1,18 +1,18 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "catch.hpp"
@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                               size_t num_records, size_t num_errors)
 {
     loginf << "cat062 1.16 test: decoded " << num_frames << " frames, " << num_records
@@ -477,7 +477,7 @@ void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     REQUIRE(first_data_block.contains("category"));
     REQUIRE(first_data_block.at("category") == 62);
     REQUIRE(first_data_block.contains("length"));
-    REQUIRE(first_data_block.at("length") == 64);
+    REQUIRE(first_data_block.at("length") == 63);
 
     loginf << "cat062 1.16 test: num records" << logendl;
     REQUIRE(first_data_block.contains("content"));
@@ -490,11 +490,7 @@ void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     //    ; FSPEC: 0x bf cf 3d 0b 00
 
     loginf << "cat062 1.16 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 5 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1,
-                               1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0}));
 
     //    ; Data Record:
     //    ;  I062/010: =0x 00 05
@@ -573,7 +569,6 @@ void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     REQUIRE(record.at("080").at("MRH") == 0);
     REQUIRE(record.at("080").at("SRC") == 6);
     REQUIRE(record.at("080").at("CNF") == 0);
-    REQUIRE(record.at("080").at("FX") == 1);
 
     // 00000011
     REQUIRE(record.at("080").at("SIM") == 0);
@@ -583,7 +578,6 @@ void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     REQUIRE(record.at("080").at("AFF") == 0);
     REQUIRE(record.at("080").at("STP") == 0);
     REQUIRE(record.at("080").at("KOS") == 1);
-    REQUIRE(record.at("080").at("FX2") == 1);
 
     // 00000001
     REQUIRE(record.at("080").at("AMA") == 0);
@@ -591,7 +585,6 @@ void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     REQUIRE(record.at("080").at("ME") == 0);
     REQUIRE(record.at("080").at("MI") == 0);
     REQUIRE(record.at("080").at("MD5") == 0);
-    REQUIRE(record.at("080").at("FX3") == 1);
 
     // 01011000
     // PSR, SSR, MDS, ADS listed if 0
@@ -602,7 +595,7 @@ void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     REQUIRE(record.at("080").at("ADS") == 1);
     REQUIRE(record.at("080").at("SUC") == 0);
     REQUIRE(record.at("080").at("AAC") == 0);
-    REQUIRE(record.at("080").at("FX4") == 0);
+
 
     //    ;  I062/290: 0x 70 ff 24 ff
     //    ;  System Track Update Ages:
@@ -613,7 +606,6 @@ void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     loginf << "cat062 1.16 test: 290" << logendl;
 
     // 01110000
-    REQUIRE(record.at("290").at("available") == std::vector<bool>({0, 1, 1, 1, 0, 0, 0, 0}));
 
     REQUIRE(record.at("290").at("PSR").at("Age") == 63.75);
     REQUIRE(record.at("290").at("SSR").at("Age") == 9.00);
@@ -651,15 +643,12 @@ void test_cat062_116_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     loginf << "cat062 1.16 test: 510" << logendl;
     REQUIRE(record.at("510").at("Composed Track Number")[0].at("SYSTEM UNIT IDENTIFICATION") == 6);
     REQUIRE(record.at("510").at("Composed Track Number")[0].at("SYSTEM TRACK NUMBER") == 3551);
-    REQUIRE(record.at("510").at("Composed Track Number")[0].at("extend") == 0);
 
     loginf << "cat062 1.16 test: 340" << logendl;
 
     //    ;  I062/340: 0x 98 00 03 05  f0 0c 84
     // 1001 1000 0000 0000
-    REQUIRE(record.at("340").at("available").size() == 8);
 
-    REQUIRE(record.at("340").at("available") == std::vector<bool>({1, 0, 0, 1, 1, 0, 0, 0}));
 
     //    ;  Measured Information:
     //    ;   Sensor identification: SAC=0; SIC=3
@@ -701,7 +690,7 @@ TEST_CASE("jASTERIX CAT062 1.16", "[jASTERIX CAT062]")
     const std::string filename = "cat062ed1.16.bin";
 
     REQUIRE(jASTERIX::Files::fileExists(data_path + filename));
-    REQUIRE(jASTERIX::Files::fileSize(data_path + filename) == 64);
+    REQUIRE(jASTERIX::Files::fileSize(data_path + filename) == 63);
 
     jasterix.decodeFile(data_path + filename, test_cat062_116_callback);
 

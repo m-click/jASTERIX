@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat247_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat247_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                           size_t num_records, size_t num_errors)
 {
     loginf << "cat247 test: decoded " << num_frames << " frames, " << num_records << " records, "
@@ -135,10 +135,7 @@ void test_cat247_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_
     //    11110000
 
     loginf << "cat247 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 1 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1, 1, 1, 1, 0, 0, 0, 0}));
 
     // ;  I247/010: =0x 00 01
     // ;  Data Source Identifier: 0x0001 (SAC=0; SIC=1)

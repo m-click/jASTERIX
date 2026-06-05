@@ -1,24 +1,26 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "spf.h"
+#include "extendablebitsitemparser.h"
 
 #include "logger.h"
 #include "string_conv.h"
+#include "traced_assert.h"
 
 using namespace std;
 using namespace nlohmann;
@@ -28,7 +30,7 @@ namespace jASTERIX
 SpecialPurposeField::SpecialPurposeField(const nlohmann::json& item_definition)
     : ItemParserBase(item_definition)
 {
-    assert(type_ == "ComplexSpecialPurposeField" || type_ == "SimpleSpecialPurposeField");
+    traced_assert(type_ == "ComplexSpecialPurposeField" || type_ == "SimpleSpecialPurposeField");
 
     /*
      Two options exist, either a "complex" SPF structured like an REF (with FSPEC and so on),
@@ -50,7 +52,7 @@ SpecialPurposeField::SpecialPurposeField(const nlohmann::json& item_definition)
                                 "' field specification is not an object");
 
         complex_field_specification_.reset(ItemParserBase::createItemParser(field_specification, ""));
-        assert(complex_field_specification_);
+        traced_assert(complex_field_specification_);
 
         // uap
 
@@ -89,7 +91,7 @@ SpecialPurposeField::SpecialPurposeField(const nlohmann::json& item_definition)
 
             item_number = data_item_it.at("number");
             item = ItemParserBase::createItemParser(data_item_it, "SPF");
-            assert(item);
+            traced_assert(item);
 
             if (complex_items_.count(item_number) != 0)
                 throw runtime_error("SpecialPurposeField item '" + name_ + "' item number '" +
@@ -128,7 +130,7 @@ SpecialPurposeField::SpecialPurposeField(const nlohmann::json& item_definition)
                                     "' contains number");
 
             item = ItemParserBase::createItemParser(data_item_it, "SPF");
-            assert(item);
+            traced_assert(item);
             simple_items_.emplace_back(item);
         }
     }
@@ -167,6 +169,10 @@ size_t SpecialPurposeField::parseSimpleItem(const char* data, size_t index, size
 
     for (const auto& item_it : simple_items_)  // parse static uap items
     {
+        if (index + parsed_bytes >= total_size)
+            throw runtime_error("SpecialPurposeField '" + name_ + "': simple item at index " +
+                to_string(index + parsed_bytes) + " exceeds total_size " + to_string(total_size));
+
         if (debug)
             loginf << "parsing simple SpecialPurposeField item '" << name_ << "' data item '"
                    << item_it->name() << "' index " << index + parsed_bytes << logendl;
@@ -192,13 +198,11 @@ size_t SpecialPurposeField::parseComplexItem(const char* data, size_t index, siz
         loginf << "parsing complex SpecialPurposeField item '" + name_ + "' field specification"
                << logendl;
 
-    parsed_bytes = complex_field_specification_->parseItem(data, index + parsed_bytes, size,
-                                                           parsed_bytes, total_size, target, debug);
-
-    if (!target.contains("REF_FSPEC"))
-        throw runtime_error("complex SpecialPurposeField item '" + name_ + "' FSPEC not found");
-
-    std::vector<bool> fspec_bits = target.at("REF_FSPEC");
+    auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(complex_field_specification_.get());
+    std::vector<bool> fspec_bits;
+    parsed_bytes = fspec_parser->parseItemBits(data, index + parsed_bytes, size,
+                                               parsed_bytes, total_size, fspec_bits, debug,
+                                               &complex_items_names_);
 
     //    if (!has_conditional_uap_ && fspec_bits.size() > uap_names_.size())
     //        throw runtime_error ("SpecialPurposeField item '"+name_+"' has more FSPEC bits than
@@ -229,6 +233,10 @@ size_t SpecialPurposeField::parseComplexItem(const char* data, size_t index, siz
                 loginf << "parsing complex SpecialPurposeField item '" << name_ << "' data item '"
                        << item_name << "' index " << index + parsed_bytes << logendl;
 
+            if (index + parsed_bytes >= total_size)
+                throw runtime_error("SpecialPurposeField '" + name_ + "': complex item at index " +
+                    to_string(index + parsed_bytes) + " exceeds total_size " + to_string(total_size));
+
             if (complex_items_.count(item_name) != 1)
                 throw runtime_error("complex SpecialPurposeField item '" + name_ +
                                     "' references undefined item '" + item_name + "'");
@@ -241,6 +249,101 @@ size_t SpecialPurposeField::parseComplexItem(const char* data, size_t index, siz
     }
 
     return parsed_bytes;
+}
+
+size_t SpecialPurposeField::encodeItem(const nlohmann::json& source, char* target,
+                                       size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding SpecialPurposeField item '" << name_ << "'" << logendl;
+
+    size_t written_bytes{0};
+
+    if (type_ == "SimpleSpecialPurposeField")
+    {
+        for (const auto& item_it : simple_items_)
+        {
+            written_bytes += item_it->encodeItem(source, target + written_bytes,
+                                                 max_size - written_bytes, debug);
+        }
+    }
+    else if (type_ == "ComplexSpecialPurposeField")
+    {
+        // Reconstruct REF_FSPEC from which items are present in source
+        std::vector<bool> fspec_bits;
+        fspec_bits.resize(complex_items_names_.size(), false);
+
+        size_t uap_cnt = 0;
+        for (const auto& item_name : complex_items_names_)
+        {
+            if (item_name == "FX" || item_name == "-")
+            {
+                uap_cnt++;
+                continue;
+            }
+            fspec_bits[uap_cnt] = (complex_items_.count(item_name) == 1 &&
+                                   source.contains(item_name));
+            uap_cnt++;
+        }
+
+        // Pad to full bytes and set FX bits only where items_names has an FX entry
+        size_t num_bytes = (fspec_bits.size() + 7) / 8;
+        fspec_bits.resize(num_bytes * 8, false);
+
+        bool has_fx = false;
+        for (size_t i = 7; i < complex_items_names_.size(); i += 8)
+            if (complex_items_names_.at(i).substr(0, 2) == "FX")
+            { has_fx = true; break; }
+
+        if (has_fx)
+        {
+            size_t last_needed_byte = 0;
+            for (size_t byte_idx = 0; byte_idx < num_bytes; ++byte_idx)
+                for (size_t bit = 0; bit < 7; ++bit)
+                    if (fspec_bits[byte_idx * 8 + bit])
+                        last_needed_byte = byte_idx;
+
+            for (size_t byte_idx = 0; byte_idx < last_needed_byte; ++byte_idx)
+                fspec_bits[byte_idx * 8 + 7] = true;
+            fspec_bits[last_needed_byte * 8 + 7] = false;
+            fspec_bits.resize((last_needed_byte + 1) * 8);
+        }
+
+        auto* fspec_parser = static_cast<ExtendableBitsItemParser*>(
+            complex_field_specification_.get());
+        written_bytes = fspec_parser->encodeBits(fspec_bits, target, max_size, debug);
+
+        uap_cnt = 0;
+        size_t num_fspec_bits = fspec_bits.size();
+
+        for (const auto& item_name : complex_items_names_)
+        {
+            if (uap_cnt >= num_fspec_bits)
+                break;
+
+            if (fspec_bits.at(uap_cnt))
+            {
+                uap_cnt++;
+
+                if (item_name == "FX" || item_name == "-")
+                    continue;
+
+                if (complex_items_.count(item_name) != 1)
+                    throw runtime_error("complex SpecialPurposeField item '" + name_ +
+                                        "' references undefined item '" + item_name + "'");
+
+                written_bytes += complex_items_.at(item_name)->encodeItem(
+                    source, target + written_bytes, max_size - written_bytes, debug);
+            }
+            else
+                uap_cnt++;
+        }
+    }
+    else
+        throw runtime_error("SpecialPurposeField item '" + name_ + "' encoding unknown type '" +
+                            type_ + "'");
+
+    return written_bytes;
 }
 
 void SpecialPurposeField::addInfo (const std::string& edition, CategoryItemInfo& info) const

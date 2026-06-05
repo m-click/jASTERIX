@@ -14,6 +14,7 @@ target_sources( test_categories
         "${CMAKE_CURRENT_LIST_DIR}/test_jasterix.h"
     PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/test_cat001_1.1.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/test_cat001_flat_sacsic.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/test_cat002_1.0.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/test_cat004_1.4.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/test_cat010_0.31.cpp"
@@ -32,6 +33,9 @@ target_sources( test_categories
         "${CMAKE_CURRENT_LIST_DIR}/test_cat065_1.3.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/test_cat247_1.2.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/test_cat252_7.0.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/test_encode.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/test_bounds.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/test_artas_md5.cpp"
 )
 
 target_sources( test_limits

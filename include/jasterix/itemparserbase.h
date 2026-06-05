@@ -1,22 +1,21 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ITEMPARSING_H
-#define ITEMPARSING_H
+#pragma once
 
 #include <jasterix/iteminfo.h>
 
@@ -24,13 +23,21 @@
 
 #include <cstddef>
 #include <sstream>
-#include <bitset>
 #include <cassert>
-#include <exception>
+#include <functional>
 #include <string>
+#include <vector>
 
 namespace jASTERIX
 {
+
+class ItemParserBase;
+
+// Callback invoked for each leaf parser during setupColumnWriters.
+// The caller uses it to create column arrays and inject pointers.
+using LeafSetupCallback = std::function<void(ItemParserBase* leaf,
+                                             const std::string& long_name)>;
+
 class ItemParserBase
 {
 public:
@@ -40,12 +47,25 @@ public:
     static ItemParserBase* createItemParser(const nlohmann::json& item_definition,
                                             const std::string& long_name_prefix);
 
-    // always return number of parsed bytes
-    // size can be for sub-item parsing and relative to index (already parsed),
-    // total size always largest possible, e.g. file size
+    // Parse binary ASTERIX data into JSON. Returns number of bytes consumed.
+    // @param data                Pointer to the full binary data buffer
+    // @param index               Absolute byte offset where this item starts in 'data'
+    // @param size                Remaining bytes in the current data block content
+    // @param current_parsed_bytes  Bytes parsed so far within the enclosing record/REF/SPF
+    // @param total_size          Total buffer size — hard upper bound for any data[offset] access
+    // @param target              JSON object to write parsed values into
+    // @param debug               Enable debug logging
     virtual size_t parseItem(const char* data, size_t index, size_t size,
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) = 0;
+
+    // Encode JSON back to binary ASTERIX. Returns number of bytes written.
+    // @param source    JSON object containing the values to encode
+    // @param target    Pre-allocated output buffer to write binary data into
+    // @param max_size  Available space in the target buffer
+    // @param debug     Enable debug logging
+    virtual size_t encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug) = 0;
     std::string name() const;
     std::string longNamePrefix() const;
     std::string longName() const;
@@ -53,12 +73,38 @@ public:
 
     virtual void addInfo (const std::string& edition, CategoryItemInfo& info) const;
 
+    // Columnar output mode: walk parser tree, call callback for each leaf.
+    // Default impl is a no-op (for parsers like SkipBytes that produce no output).
+    virtual void setupColumnWriters(const LeafSetupCallback& callback);
+
+    // Inject column target for this parser (called by LeafSetupCallback).
+    void setColumnTarget(nlohmann::json* column_array, size_t* record_index);
+
 protected:
+    // Write a parsed value: to column array in columnar mode, or to target in structured mode.
+    // In columnar mode, also writes to target (scratch json) for conditional UAP lookups.
+    template<typename T>
+    void writeValue(nlohmann::json& target, T&& value)
+    {
+        if (column_target_)
+        {
+            target.emplace(name_, value);  // copy to scratch for conditional UAP
+            (*column_target_)[*record_index_] = std::forward<T>(value);
+        }
+        else
+            target.emplace(name_, std::forward<T>(value));
+    }
+
     const nlohmann::json& item_definition_;
     std::string name_;
     std::string long_name_prefix_;
     std::string long_name_;
     std::string type_;
+
+    // Columnar output mode members
+    nlohmann::json* column_target_ = nullptr;  // pointer to this leaf's column array
+    size_t* record_index_ = nullptr;           // shared pointer to current record counter
+    bool column_mode_ = false;                 // true when columnar mode is active (set on containers)
 };
 
 bool variableHasValue(const nlohmann::json& data,
@@ -88,4 +134,4 @@ inline std::vector<std::string> split(const std::string& s, char delim)
 
 }  // namespace jASTERIX
 
-#endif  // ITEMPARSING_H
+

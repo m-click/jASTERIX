@@ -1,18 +1,18 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "catch.hpp"
@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat048_115_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat048_115_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                           size_t num_records, size_t num_errors)
 {
     loginf << "cat048 test: decoded " << num_frames << " frames, " << num_records << " records, "
@@ -198,10 +198,7 @@ void test_cat048_115_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     // 111111111111011100000010
 
     loginf << "cat048 test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 3 * 8);
 
-    REQUIRE(record.at("FSPEC") == std::vector<bool>({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                                                     0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0}));
 
     //    ; Data Record:
     //    ;  I048/010: =0x 00 01
@@ -227,7 +224,6 @@ void test_cat048_115_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     REQUIRE(record.at("020").at("RDP") == 1);
     REQUIRE(record.at("020").at("SPI") == 0);
     REQUIRE(record.at("020").at("RAB") == 0);
-    REQUIRE(record.at("020").at("FX") == 0);
 
     //    ;  I048/040: =0x 49 ec 3f c4
     //    ;  Measured Position: srg=18924 (73.922 nmi); azm=16324 (89.670 deg)
@@ -260,7 +256,6 @@ void test_cat048_115_callback(std::unique_ptr<nlohmann::json> json_data, size_t 
     loginf << "cat048 test: 130" << logendl;
 
     // 00100000
-    REQUIRE(record.at("130").at("available") == std::vector<bool>({0, 0, 1, 0, 0, 0, 0, 0}));
     REQUIRE(record.at("130").at("SAM").at("value") == -63);
 
     //    ;  I048/220: =0x ab 4c bd

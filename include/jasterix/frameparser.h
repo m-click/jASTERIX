@@ -1,25 +1,23 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef FRAMEPARSER_H
-#define FRAMEPARSER_H
+#pragma once
 
 #include "json.hpp"
-//#include "itemparserbase.h"
 
 namespace jASTERIX
 {
@@ -36,8 +34,8 @@ class FrameParser
     size_t parseHeader(const char* data, size_t index, size_t total_size, nlohmann::json& target,
                        bool debug);
 
-    // parsed bytes, num frames, done flag
-    std::tuple<size_t, size_t, bool> findFrames(const char* data, size_t index, size_t total_size,
+    // parsed bytes, num frames, done flag, error flag
+    std::tuple<size_t, size_t, bool, bool> findFrames(const char* data, size_t index, size_t total_size,
                                                 nlohmann::json* target, bool debug);
 
     // num records, num errors
@@ -60,4 +58,4 @@ class FrameParser
 
 }  // namespace jASTERIX
 
-#endif  // FRAMEPARSER_H
+

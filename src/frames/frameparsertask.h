@@ -1,25 +1,25 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef FRAMEPARSERTASK_H
-#define FRAMEPARSERTASK_H
+#pragma once
 
 #include <tbb/tbb.h>
 
+#include <atomic>
 #include <future>
 #include <exception>
 #include <tuple>
@@ -27,6 +27,7 @@
 #include "frameparser.h"
 #include "jasterix.h"
 #include "logger.h"
+#include "traced_assert.h"
 
 namespace jASTERIX
 {
@@ -52,27 +53,28 @@ public:
             if (debug_)
                 loginf << "frame parser task execute" << logendl;
 
-            while (!force_stop_ && !done_)  // || size_-index_ > 0
+            while (!force_stop_ && !done_ && !error_ocurred_)  // || size_-index_ > 0
             {
                 std::unique_ptr<nlohmann::json> data_chunk{new nlohmann::json()};
 
                 if (frame_parser_.hasFileHeaderItems())
                     *data_chunk = header_;  // copy header
 
-                assert(index_ < total_size_);
+                traced_assert(index_ < total_size_);
 
                 try
                 {
-                    std::tuple<size_t, size_t, bool> ret =
+                    std::tuple<size_t, size_t, bool, bool> ret =
                             frame_parser_.findFrames(data_, index_, total_size_, data_chunk.get(), debug_);
 
                     index_ += std::get<0>(ret);  // parsed bytes
                     done_ = std::get<2>(ret);    // done flag
+                    error_ocurred_ = std::get<3>(ret);    // error flag
 
                     //            if (done_)
                     //                loginf << "frame parser task done" << logendl;
 
-                    assert(data_chunk != nullptr);
+                    traced_assert(data_chunk != nullptr);
 
                     if (!data_chunk->contains("frames"))
                         throw std::runtime_error("jASTERIX scoped frames information contains no frames");
@@ -80,8 +82,8 @@ public:
                     if (!data_chunk->at("frames").is_array())
                         throw std::runtime_error("jASTERIX scoped frames information is not array");
 
-                    jasterix_.addDataChunk(std::move(data_chunk), done_);
-                    assert(data_chunk == nullptr);
+                    jasterix_.addDataChunk(std::move(data_chunk), index_, done_);
+                    traced_assert(data_chunk == nullptr);
 
                 }
                 catch (std::exception& e)
@@ -90,6 +92,9 @@ public:
 
                     error_ocurred_ = true;
                     done_ = true;
+
+                    // wake consumer parked on data_chunks_cv_ so it doesn't deadlock
+                    jasterix_.notifyDataChunksError();
 
                     throw (e);
                 }
@@ -118,9 +123,9 @@ private:
     size_t index_;
     size_t total_size_;
     bool debug_;
-    bool error_ocurred_{false};
-    bool done_{false};
-    volatile bool force_stop_{false};
+    std::atomic<bool> error_ocurred_{false};
+    std::atomic<bool> done_{false};
+    std::atomic<bool> force_stop_{false};
 
     std::future<void> pending_future_;
 };
@@ -134,5 +139,3 @@ void FrameParserTask::forceStop()
 bool FrameParserTask::done() const { return done_; }
 
 }  // namespace jASTERIX
-
-#endif  // FRAMEPARSERTASK_H

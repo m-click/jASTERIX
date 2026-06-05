@@ -1,22 +1,21 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef FIXEDBITSITEMPARSER_H
-#define FIXEDBITSITEMPARSER_H
+#pragma once
 
 #include "itemparserbase.h"
 
@@ -25,6 +24,8 @@ namespace jASTERIX
 class FixedBitsItemParser : public ItemParserBase
 {
   public:
+    enum class DataType { Uint, Int, Digits, IcaoCharacters, AsciiCharacters };
+
     FixedBitsItemParser(const nlohmann::json& item_definition, const std::string& long_name_prefix,
                         unsigned int byte_length);
     virtual ~FixedBitsItemParser() {}
@@ -33,11 +34,17 @@ class FixedBitsItemParser : public ItemParserBase
                              size_t current_parsed_bytes, size_t total_size,
                              nlohmann::json& target, bool debug) override;
 
+    virtual size_t encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug) override;
+
+    virtual void setupColumnWriters(const LeafSetupCallback& callback) override;
+
   protected:
     unsigned int byte_length_{0};
     unsigned int start_bit_{0};
     unsigned int bit_length_{0};
     std::string data_type_{"uint"};
+    DataType data_type_enum_{DataType::Uint};
     //unsigned int negative_bit_pos_{0};
     bool has_lsb_{false};
     double lsb_{1.0};
@@ -66,8 +73,10 @@ class FixedBitsItemParser : public ItemParserBase
     std::vector<unsigned char> chars_bitmasks1;
     std::vector<unsigned int> chars_bitmasks4;
     std::vector<size_t> chars_bitmasks8;
+
+    bool no_output_{false};
 };
 
 }  // namespace jASTERIX
 
-#endif  // FIXEDBITSITEMPARSER_H
+

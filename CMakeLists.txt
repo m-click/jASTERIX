@@ -1,7 +1,7 @@
 set(JASTERIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 message("  Path: ${JASTERIX_PATH}")
 
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.28)
 set ( CMAKE_BUILD_TYPE RelWithDebInfo ) #Debug RelWithDebInfo Release
 
 project( jASTERIX )
@@ -14,8 +14,14 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-message("  Platform: Linux")
-add_definitions ( -Wall -UNDEBUG -std=c++14) # -Wno-int-in-bool-context
+if(EXISTS "/.dockerenv")
+message("  Platform: Linux (inside docker)")
+add_definitions ( -UNDEBUG -Wall -std=c++17 -fext-numeric-literals) # -DQT_NO_KEYWORDS
+ELSE()
+message("  Platform: Linux (local)")
+add_definitions ( -UNDEBUG -Wall -std=c++17 -fno-omit-frame-pointer) # -DQT_NO_KEYWORDS -fext-numeric-literals
+ENDIF()
+
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # Instruct CMake to run moc automatically when needed.
@@ -31,7 +37,7 @@ message("USE_OPENSSL: ${USE_OPENSSL}")
 
 configure_file(include/jasterix/global.h.in include/jasterix/global.h)
 
-find_package ( Boost 1.73.0 COMPONENTS program_options filesystem iostreams regex system REQUIRED)
+find_package ( Boost 1.73.0 COMPONENTS program_options filesystem iostreams regex system stacktrace_backtrace REQUIRED)
 message("  Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}")
 message("  Boost_LIBRARY_DIR: ${Boost_LIBRARY_DIR}")
 message("  Boost_LIBRARIES: ${Boost_LIBRARIES}")
@@ -82,6 +88,10 @@ find_package ( LibArchive REQUIRED )
 message("  LibArchive_INCLUDE_DIRS: ${LibArchive_INCLUDE_DIRS}")
 message("  LibArchive_LIBRARIES: ${LibArchive_LIBRARIES}")
 
+find_package ( PCAP REQUIRED )
+message("  PCAP_INCLUDE_DIR: ${PCAP_INCLUDE_DIR}")
+message("  PCAP_LIBRARY: ${PCAP_LIBRARY}")
+
 
 message("Install path: ${CMAKE_INSTALL_PREFIX}")
 
@@ -95,6 +105,7 @@ include_directories (
     ${PROJECT_BINARY_DIR}/include
     ${Boost_INCLUDE_DIRS}
     ${LibArchive_INCLUDE_DIRS}
+    ${PCAP_INCLUDE_DIR}
     )
 
 target_link_libraries ( jasterix
@@ -102,6 +113,7 @@ target_link_libraries ( jasterix
     TBB::tbb
     ${LibArchive_LIBRARIES}
     ${Boost_LIBRARIES}
+    ${PCAP_LIBRARY}
     )
 
 target_sources(jasterix
@@ -110,11 +122,17 @@ target_sources(jasterix
     PRIVATE
 )    
     
+target_compile_definitions(jasterix PRIVATE
+    BOOST_STACKTRACE_USE_BACKTRACE
+    #BOOST_ENABLE_ASSERT_HANDLER
+    BOOST_STACKTRACE_LINK
+)    
+    
 message("Installing using prefix: ${CMAKE_INSTALL_PREFIX}")
 #install(DIRECTORY "specifications" DESTINATION jasterix)
 
 set_target_properties(jasterix PROPERTIES PUBLIC_HEADER
-    "include/jasterix/jasterix.h;include/jasterix/category.h;include/jasterix/editionbase.h;include/jasterix/edition.h;include/jasterix/refedition.h;include/jasterix/ref.h;include/jasterix/spfedition.h;include/jasterix/spf.h;include/jasterix/mapping.h;include/jasterix/frameparser.h;include/jasterix/record.h;include/jasterix/iteminfo.h;include/jasterix/itemparserbase.h;build/include/jasterix/global.h")
+    "include/jasterix/jasterix.h;include/jasterix/category.h;include/jasterix/editionbase.h;include/jasterix/edition.h;include/jasterix/refedition.h;include/jasterix/ref.h;include/jasterix/spfedition.h;include/jasterix/spf.h;include/jasterix/mapping.h;include/jasterix/frameparser.h;include/jasterix/record.h;include/jasterix/iteminfo.h;include/jasterix/itemparserbase.h;${CMAKE_CURRENT_BINARY_DIR}/include/jasterix/global.h")
 
 #install (TARGETS jasterix DESTINATION lib)
 install (TARGETS jasterix DESTINATION lib

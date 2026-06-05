@@ -25,7 +25,7 @@
 using namespace std;
 using namespace nlohmann;
 
-void test_cat010_sensis_callback(std::unique_ptr<nlohmann::json> json_data, size_t num_frames,
+void test_cat010_sensis_callback(std::unique_ptr<nlohmann::json> json_data, size_t total_num_bytes, size_t num_frames,
                           size_t num_records, size_t num_errors)
 {
     loginf << "cat010 sensis test: decoded " << num_frames << " frames, " << num_records << " records, "
@@ -205,13 +205,7 @@ void test_cat010_sensis_callback(std::unique_ptr<nlohmann::json> json_data, size
     //    11111011 01110101 00010001 10000000
 
     loginf << "cat010 sensis test: fspec" << logendl;
-    REQUIRE(record.at("FSPEC").size() == 4 * 8);
 
-    REQUIRE(record.at("FSPEC") ==
-            std::vector<bool>({1,1,1,1,1,0,1,1,
-                               0,1,1,1,0,1,0,1,
-                               0,0,0,1,0,0,0,1,
-                               1,0,0,0,0,0,0,0}));
 
     //    ;  I010/010: =0x 00 00
     //    ;  Data Source Identifier: 0x0000 (SAC=0; SIC=0)
@@ -235,14 +229,12 @@ void test_cat010_sensis_callback(std::unique_ptr<nlohmann::json> json_data, size
     REQUIRE(record.at("020").at("CHN") == 0);
     REQUIRE(record.at("020").at("GBS") == 0);
     REQUIRE(record.at("020").at("CRT") == 1);
-    REQUIRE(record.at("020").at("FX") == 1);
 
     REQUIRE(record.at("020").at("SIM") == 0);
     REQUIRE(record.at("020").at("TST") == 0);
     REQUIRE(record.at("020").at("RAB") == 0);
     REQUIRE(record.at("020").at("LOP") == 0);
     REQUIRE(record.at("020").at("TOT") == 0);
-    REQUIRE(record.at("020").at("FX2") == 1);
 
     REQUIRE(record.at("020").at("SPI") == 0);
 
@@ -300,7 +292,6 @@ void test_cat010_sensis_callback(std::unique_ptr<nlohmann::json> json_data, size
     REQUIRE(record.at("170").at("MAH") == 0);
     REQUIRE(record.at("170").at("TCC") == 0);
     REQUIRE(record.at("170").at("STH") == 1);
-    REQUIRE(record.at("170").at("FX") == 0);
 
     //    ;  I010/220: =0x 47 4c a1
     //    ;  Aircraft Address: 0x474ca1 (4672673)

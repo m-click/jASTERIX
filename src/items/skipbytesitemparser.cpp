@@ -1,23 +1,24 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "skipbytesitemparser.h"
 
 #include "logger.h"
+#include "traced_assert.h"
 
 using namespace std;
 using namespace nlohmann;
@@ -27,7 +28,7 @@ namespace jASTERIX
 SkipBytesItemParser::SkipBytesItemParser(const nlohmann::json& item_definition, const std::string& long_name_prefix)
     : ItemParserBase(item_definition, long_name_prefix)
 {
-    assert(type_ == "skip_bytes");
+    traced_assert(type_ == "skip_bytes");
 
     if (!item_definition.contains("length"))
         throw runtime_error("fixed bytes item '" + name_ + "' parsing without length");
@@ -44,6 +45,21 @@ size_t SkipBytesItemParser::parseItem(const char* data, size_t index, size_t siz
                << length_ << " index " << index << " size " << size << " current parsed bytes "
                << current_parsed_bytes << logendl;
 
+    if (index + length_ > total_size)
+        throw runtime_error("SkipBytesItemParser '" + name_ + "': skip " +
+            to_string(length_) + " bytes at index " + to_string(index) +
+            " exceeds total_size " + to_string(total_size));
+
+    return length_;
+}
+
+size_t SkipBytesItemParser::encodeItem(const nlohmann::json& source, char* target,
+                                       size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding skipped bytes item '" + name_ + "' length " << length_ << logendl;
+
+    memset(target, 0, length_);
     return length_;
 }
 

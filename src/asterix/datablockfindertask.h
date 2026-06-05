@@ -1,7 +1,24 @@
-#ifndef DATABLOCKFINDERTASK_H
-#define DATABLOCKFINDERTASK_H
+/*
+ * This file is part of jASTERIX.
+ *
+ * jASTERIX is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * jASTERIX is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
+ #pragma once
 
 #include <tbb/tbb.h>
+#include <atomic>
 #include <future>
 
 #include <exception>
@@ -44,17 +61,24 @@ class DataBlockFinderTask // : public tbb::task
 
                     parsed_bytes += std::get<0>(ret);
                     num_data_blocks += std::get<1>(ret);
-                    error_ += std::get<2>(ret);
+                    if (std::get<2>(ret))
+                        error_ = true;
                     done_ = std::get<3>(ret);
 
 //                    loginf << "DataBlockFinderTask: ex pb " << parsed_bytes << " num db "
 //                           << num_data_blocks << " done " << done_ << logendl;
 
-                    jasterix_.addDataBlockChunk(std::move(jdata), error_, done_);
+                    jasterix_.addDataBlockChunk(std::move(jdata), index_ + parsed_bytes,
+                                               error_, done_);
                 }
                 catch (std::exception& e)
                 {
+                    error_ = true;
                     done_ = true;
+
+                    // wake consumer parked on data_block_chunks_cv_ so it doesn't deadlock
+                    jasterix_.notifyDataBlockChunksError();
+
                     throw (e);
                 }
             }
@@ -82,9 +106,9 @@ class DataBlockFinderTask // : public tbb::task
     size_t index_;
     size_t total_size_;
     bool debug_;
-    bool error_{false};
-    bool done_{false};
-    volatile bool force_stop_{false};
+    std::atomic<bool> error_{false};
+    std::atomic<bool> done_{false};
+    std::atomic<bool> force_stop_{false};
 
     std::future<void> pending_future_;
 };
@@ -97,4 +121,3 @@ bool DataBlockFinderTask::error() const { return error_; }
 
 }  // namespace jASTERIX
 
-#endif  // DATABLOCKFINDERTASK_H

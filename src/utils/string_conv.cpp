@@ -1,21 +1,22 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "string_conv.h"
+#include "traced_assert.h"
 
 #include <cassert>
 #include <cstring>
@@ -40,7 +41,7 @@ int char2int(char input)
 size_t hex2bin(const char* src, char* target)
 {
     size_t src_len = strlen(src);
-    assert(src_len % 2 == 0);
+    traced_assert(src_len % 2 == 0);
 
     while (*src && src[1])
     {
@@ -72,6 +73,17 @@ char getIcaoChar(unsigned char c)
     return ch;
 }
 
+unsigned char getIcaoCode(char c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return static_cast<unsigned char>(c - 'A' + 1);
+    if (c == ' ')
+        return 32;
+    if (c >= '0' && c <= '9')
+        return static_cast<unsigned char>(c - '0' + 48);
+    return 0;
+}
+
 constexpr char hexmap[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                            '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
@@ -86,13 +98,10 @@ std::string binary2hex(const unsigned char* data, unsigned int len)
     return s;
 }
 
-// std::string binary2hex(const unsigned char* src, unsigned int length)
-//{
-//    std::stringstream ss;
-//    for(unsigned int i=0; i < length; ++i)
-//        ss << std::setfill('0') << std::setw(2) << std::hex << (int)src[i];
-//    return ss.str();
-//}
+std::string bin2hex(const char* src, size_t length)
+{
+    return binary2hex(reinterpret_cast<const unsigned char*>(src), static_cast<unsigned int>(length));
+}
 
 std::vector<std::string>& split(const std::string& s, char delim, std::vector<std::string>& elems)
 {

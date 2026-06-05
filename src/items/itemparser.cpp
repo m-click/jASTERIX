@@ -1,23 +1,24 @@
 /*
- * This file is part of ATSDB.
+ * This file is part of jASTERIX.
  *
- * ATSDB is free software: you can redistribute it and/or modify
+ * jASTERIX is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ATSDB is distributed in the hope that it will be useful,
+ * jASTERIX is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with ATSDB.  If not, see <http://www.gnu.org/licenses/>.
+ * along with jASTERIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "itemparser.h"
 
 #include "logger.h"
+#include "traced_assert.h"
 
 using namespace std;
 using namespace nlohmann;
@@ -27,7 +28,7 @@ namespace jASTERIX
 ItemParser::ItemParser(const nlohmann::json& item_definition, const std::string& long_name_prefix)
     : ItemParserBase(item_definition, long_name_prefix)
 {
-    assert(type_ == "item");
+    traced_assert(type_ == "item");
 
     if (!item_definition.contains("number"))
         throw runtime_error("parsing item '" + name_ + "' without number");
@@ -58,8 +59,10 @@ ItemParser::ItemParser(const nlohmann::json& item_definition, const std::string&
             item_number = "";
 
         item = ItemParserBase::createItemParser(data_item_it, long_name_);
-        assert(item);
+        traced_assert(item);
         data_fields_.push_back(std::unique_ptr<ItemParserBase>{item});
+        data_field_optional_.push_back(
+            data_item_it.contains("optional") && data_item_it.at("optional") == true);
     }
 }
 
@@ -71,10 +74,33 @@ size_t ItemParser::parseItem(const char* data, size_t index, size_t size,
 
     size_t parsed_bytes{0};
 
-    for (auto& df_item : data_fields_)
+    if (column_mode_)
     {
-        parsed_bytes += df_item->parseItem(
-                    data, index + parsed_bytes, size, current_parsed_bytes, total_size, target[number_], debug);
+        // Columnar mode: skip creating sub-object, pass target through
+        for (auto& df_item : data_fields_)
+        {
+            parsed_bytes += df_item->parseItem(
+                        data, index + parsed_bytes, size, current_parsed_bytes, total_size, target, debug);
+
+            if (index + parsed_bytes > total_size)
+                throw runtime_error("ItemParser '" + name_ + "': parsed " +
+                    to_string(parsed_bytes) + " bytes at index " + to_string(index) +
+                    " exceeds total_size " + to_string(total_size));
+        }
+    }
+    else
+    {
+        json& item_target = target[number_];
+        for (auto& df_item : data_fields_)
+        {
+            parsed_bytes += df_item->parseItem(
+                        data, index + parsed_bytes, size, current_parsed_bytes, total_size, item_target, debug);
+
+            if (index + parsed_bytes > total_size)
+                throw runtime_error("ItemParser '" + name_ + "': parsed " +
+                    to_string(parsed_bytes) + " bytes at index " + to_string(index) +
+                    " exceeds total_size " + to_string(total_size));
+        }
     }
 
     if (debug)
@@ -82,6 +108,46 @@ size_t ItemParser::parseItem(const char* data, size_t index, size_t size,
                << logendl;
 
     return parsed_bytes;
+}
+
+size_t ItemParser::encodeItem(const nlohmann::json& source, char* target,
+                              size_t max_size, bool debug)
+{
+    if (debug)
+        loginf << "encoding item '" << name_ << "' number '" << number_ << "'" << logendl;
+
+    const json& item_source = source.at(number_);
+
+    size_t written_bytes{0};
+
+    // Track byte offsets per data_field for FX bit fixup
+    std::vector<size_t> field_offsets;
+    std::vector<size_t> field_sizes;
+
+    for (auto& df_item : data_fields_)
+    {
+        field_offsets.push_back(written_bytes);
+        size_t bytes = df_item->encodeItem(item_source, target + written_bytes,
+                                           max_size - written_bytes, debug);
+        field_sizes.push_back(bytes);
+        written_bytes += bytes;
+    }
+
+    // Fixup FX bits: if an optional extension was encoded,
+    // set bit 0 of the last byte of the preceding field
+    for (size_t i = 1; i < data_fields_.size(); ++i)
+    {
+        if (data_field_optional_[i] && field_sizes[i] > 0 && field_sizes[i - 1] > 0)
+        {
+            target[field_offsets[i - 1] + field_sizes[i - 1] - 1] |= 0x01;
+        }
+    }
+
+    if (debug)
+        loginf << "encoding item '" + name_ + "' done, " << written_bytes << " bytes written"
+               << logendl;
+
+    return written_bytes;
 }
 
 std::string ItemParser::number() const { return number_; }
@@ -92,5 +158,12 @@ void ItemParser::addInfo (const std::string& edition, CategoryItemInfo& info) co
         field_it->addInfo(edition, info);
 }
 
+
+void ItemParser::setupColumnWriters(const LeafSetupCallback& callback)
+{
+    column_mode_ = true;
+    for (auto& df_item : data_fields_)
+        df_item->setupColumnWriters(callback);
+}
 
 }  // namespace jASTERIX
