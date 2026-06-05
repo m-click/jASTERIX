@@ -44,11 +44,11 @@ bool directoryExists(const std::string& path)
     return boost::filesystem::exists(path) && boost::filesystem::is_directory(path);
 }
 
-struct path_leaf_string
+struct path_filename_string
 {
     std::string operator()(const boost::filesystem::directory_entry& entry) const
     {
-        return entry.path().leaf().string();
+        return entry.path().filename().string();
     }
 };
 
@@ -59,7 +59,7 @@ std::vector<std::string> getFilesInDirectory(const std::string& path)
     boost::filesystem::path p(path);
     boost::filesystem::directory_iterator start(p);
     boost::filesystem::directory_iterator end;
-    std::transform(start, end, std::back_inserter(tmp), path_leaf_string());
+    std::transform(start, end, std::back_inserter(tmp), path_filename_string());
 
     return tmp;
 }
