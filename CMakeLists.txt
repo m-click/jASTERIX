@@ -37,7 +37,7 @@ message("USE_OPENSSL: ${USE_OPENSSL}")
 
 configure_file(include/jasterix/global.h.in include/jasterix/global.h)
 
-find_package ( Boost 1.73.0 COMPONENTS program_options filesystem iostreams regex system stacktrace_backtrace REQUIRED)
+find_package ( Boost 1.73.0 COMPONENTS program_options filesystem iostreams regex stacktrace_backtrace REQUIRED)
 message("  Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}")
 message("  Boost_LIBRARY_DIR: ${Boost_LIBRARY_DIR}")
 message("  Boost_LIBRARIES: ${Boost_LIBRARIES}")
